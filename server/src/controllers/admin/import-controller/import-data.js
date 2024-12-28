@@ -11,11 +11,16 @@ async function importData(ctx) {
 
   const { user } = ctx.state;
   const { data } = ctx.request.body;
-  const {slug, data:dataRaw, format, idField} = data
+  const { slug, data: dataRaw, format, idField } = data;
   const fileContent = await getService('import').parseInputData(format, dataRaw, { slug });
 
   let res;
-  if (fileContent?.version === 2) {
+  if (fileContent?.version === 3) {
+    res = await getService('import').importDataV3(fileContent, {
+      slug,
+      user,
+    });
+  } else if (fileContent?.version === 2) {
     res = await getService('import').importDataV2(fileContent, {
       slug,
       user,
@@ -37,7 +42,7 @@ async function importData(ctx) {
 
 function hasPermissions(ctx) {
   const { data } = ctx.request.body;
-  const {slug } = data
+  const { slug } = data;
   const { userAbility } = ctx.state;
 
   let slugsToCheck = [];
@@ -51,7 +56,6 @@ function hasPermissions(ctx) {
 }
 
 function hasPermissionForSlug(userAbility, slug) {
-  
   const permissionChecker = strapi.plugin('content-manager').service('permission-checker').create({ userAbility, model: slug });
 
   return permissionChecker.can.create() && permissionChecker.can.update();

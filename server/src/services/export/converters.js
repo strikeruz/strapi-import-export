@@ -117,24 +117,32 @@ const computeUrl = (relativeUrl) => {
 
 const exportRelationsAsId = (entries, options) => {
   const relationKeys = getModelAttributes(options.slug, { filterOutTarget: ['admin::user'], filterType: ['component', 'dynamiczone', 'media', 'relation'] }).map(
-    (attr) => attr.name,
+    (attr) => attr,
   );
 
   return entries.map((entry) => {
     relationKeys.forEach((key) => {
-      if (entry[key] == null) {
-        entry[key] = null;
-      } else if (isArraySafe(entry[key])) {
-        entry[key] = entry[key].map((rel) => {
-          if (typeof rel === 'object') {
-            return rel.id;
+      const relationName = key.name;
+
+      if (entry[relationName] == null) {
+        entry[relationName] = null;
+      } else if (isArraySafe(entry[relationName])) {
+        entry[relationName] = entry[relationName].map((rel) => {
+          if (key.type === 'component') {
+            console.log(relationName, JSON.stringify(rel));
+            return exportRelationsAsId(toArray(rel), { slug: key.component });
+          } else {
+            if (typeof rel === 'object') {
+              return rel.id;
+            }
+            return rel;
           }
-          return rel;
         });
-      } else if (isObjectSafe(entry[key])) {
-        entry[key] = entry[key].id;
+      } else if (isObjectSafe(entry[relationName])) {
+        entry[relationName] = entry[relationName].id;
       }
     });
+
     return entry;
   });
 };

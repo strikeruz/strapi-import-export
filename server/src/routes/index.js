@@ -1,7 +1,7 @@
-import exportAdminRoutes from './export-admin.js';
-import importAdminRoutes from './import-admin.js';
-import exportContentApiRoutes from './export-content-api.js';
-import importContentApiRoutes from './import-content-api.js';
+import exportAdminRoutes from './export-admin';
+import importAdminRoutes from './import-admin';
+import exportContentApiRoutes from './export-content-api';
+import importContentApiRoutes from './import-content-api';
 
 export default {
   exportAdminRoutes,

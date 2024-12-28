@@ -327,6 +327,9 @@ function getPopulateFromSchema(slug, deepness = 5) {
       continue;
     }
 
+    console.log('attribute', JSON.stringify(attribute, null, 2));
+    console.log('attributeName', attributeName);
+
     if (isComponentAttribute(attribute)) {
       populate[attributeName] = getPopulateFromSchema(attribute.component, deepness - 1);
     } else if (isDynamicZoneAttribute(attribute)) {

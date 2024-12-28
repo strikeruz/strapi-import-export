@@ -7,7 +7,7 @@ import { useIntl } from 'react-intl';
 
 import { pluginPermissions } from '../../permissions';
 import getTrad from '../../utils/getTrad';
-import { ExportModal } from '../ExportModal/ExportModal';
+// import { ExportModal } from '../ExportModal/ExportModal';
 // import { ExportButton } from '../ExportButton';
 // import { ImportModal } from '../ImportModal';
 
@@ -28,7 +28,7 @@ export const InjectedImportExportSingleType = () => {
 
         <Box paddingBottom={1}>
           <Flex direction="column" gap={2}>
-            <ExportModal fullWidth  unavailableOptions={['exportPluginsContentTypes']} />
+            {/* <ExportModal fullWidth  unavailableOptions={['exportPluginsContentTypes']} /> */}
             {/* <ExportButton fullWidth unavailableOptions={['exportPluginsContentTypes']} /> */}
           </Flex>
         </Box>

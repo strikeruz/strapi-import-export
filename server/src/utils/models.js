@@ -31,6 +31,8 @@ export function getModelAttributes(
     return [];
   }
 
+  // console.log(slug, JSON.stringify(schema.attributes));
+
   const typesToKeep = options.filterType ? toArray(options.filterType) : [];
   const typesToFilterOut = options.filterOutType ? toArray(options.filterOutType) : [];
   const targetsToFilterOut = toArray(options.filterOutTarget || []);
@@ -43,6 +45,8 @@ export function getModelAttributes(
   if (typesToKeep.length) {
     attributes = attributes.filter((attr) => typesToKeep.includes(attr.type));
   }
+
+  // console.log(JSON.stringify(attributes));
 
   return attributes;
 }

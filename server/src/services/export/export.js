@@ -9,6 +9,7 @@ const dataFormats = {
   CSV: 'csv',
   JSON: 'json',
   JSON_V2: 'json-v2',
+  JSON_V3: 'json-v3',
 };
 
 const dataConverterConfigs = {

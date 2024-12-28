@@ -1,5 +1,5 @@
 export const useDownloadFile = () => {
-  const downloadFile = (content, filename, contentType) => {
+  const downloadFile = (content: string, filename: string, contentType: string): void => {
     var blob = new Blob([content], { type: contentType });
     var url = URL.createObjectURL(blob);
 
@@ -9,7 +9,7 @@ export const useDownloadFile = () => {
     link.click();
   };
 
-  const withTimestamp = (fileName) => {
+  const withTimestamp = (fileName: string): string => {
     const ts = new Date().toISOString().replace(/\D/g, '').substring(2);
 
     const name = fileName.split('.').slice(0, -1).join('.').concat(`_${ts}`);

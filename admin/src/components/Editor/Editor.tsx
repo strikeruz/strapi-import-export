@@ -3,14 +3,18 @@ import './style.css';
 import React, { useEffect, useState } from 'react';
 import CodeMirror from "@uiw/react-codemirror";
 
-export const Editor = ({ content = '', language = 'csv', readOnly = false, onChange, style }) => {
+export const Editor = ({ content = '', language = 'json', readOnly = false, onChange, style }) => {
  
   const [codeMirrorContent, setCodeMirrorContent] = useState('');
 
   useEffect(() => {
     console.log('content', content);
     if (typeof content === 'object') {
-      setCodeMirrorContent(content.data);
+      if((content as unknown as {data: string}).data){
+        setCodeMirrorContent((content as unknown as {data: string}).data);
+      }else{
+        setCodeMirrorContent(JSON.stringify(content, null, 2));
+      }
     }else{
       setCodeMirrorContent(content);
     }
@@ -21,8 +25,7 @@ export const Editor = ({ content = '', language = 'csv', readOnly = false, onCha
     <>
     <CodeMirror
       className="plugin-ie-editor"
-      mode= {{ name: "javascript", json: true }}
-      lineNumbers={true}
+      basicSetup={{lineNumbers: true}}
       readOnly={false}
       style={style}
       height="40vh"

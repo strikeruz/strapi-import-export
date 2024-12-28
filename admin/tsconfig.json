@@ -4,5 +4,8 @@
   "compilerOptions": {
     "rootDir": "../",
     "baseUrl": "."
-  }
+  },
+  // "paths": {
+  //   "@strapi/*": ["../../node_modules/@strapi/*"]
+  // }
 }

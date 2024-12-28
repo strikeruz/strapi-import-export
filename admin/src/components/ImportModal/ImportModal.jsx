@@ -68,12 +68,12 @@ const DragOverLabel = styled(Label)`
 import { useAlerts } from '../../hooks/useAlerts';
 import { useI18n } from '../../hooks/useI18n';
 import { useSlug } from '../../hooks/useSlug';
-import { dataFormats } from '../../utils/dataFormats.js';
-import { handleRequestErr } from '../../utils/error.js';
+import { dataFormats } from '../../utils/dataFormats';
+import { handleRequestErr } from '../../utils/error';
 import getTrad from '../../utils/getTrad';
 
-import { Editor } from '../Editor/Editor.jsx';
-import { ImportEditor } from './components/ImportEditor/ImportEditor.jsx';
+import { Editor } from '../Editor/Editor';
+import { ImportEditor } from './components/ImportEditor/ImportEditor';
 
 const ModalState = {
   SUCCESS: 'success',
@@ -155,6 +155,7 @@ export const ImportModal = ({ onClose }) => {
       });
 
       const { failures } = res;
+      console.log('res', JSON.stringify(res, null, 2));
       if (!failures.length) {
         setUploadSuccessful(ModalState.SUCCESS);
         notify(

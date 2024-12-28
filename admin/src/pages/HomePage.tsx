@@ -7,7 +7,7 @@ import { Main } from '@strapi/design-system';
 import { useIntl } from 'react-intl';
 import { Header } from '../components/Header.jsx';
 import { ImportModal } from '../components/ImportModal/ImportModal.jsx';
-import { ExportModal } from '../components/ExportModal/ExportModal.jsx';
+// import { ExportModal } from '../components/ExportModal/ExportModal.js';
 import Preferences from '../components/Preferences/Preferences.jsx';
 import About from '../components/About/About.jsx';
 import { getTranslation } from '../utils/getTranslation';
@@ -44,7 +44,7 @@ const HomePage = () => {
                   <Flex direction="column" alignItems="start" gap={4}>
                     <Flex gap={4}>
                       <ImportModal />
-                      <ExportModal availableExportFormats={[dataFormats.JSON_V2]}/>
+                      {/* <ExportModal availableExportFormats={[dataFormats.JSON_V2]}/> */}
                       {/* <ExportButton availableExportFormats={[dataFormats.JSON_V2]} /> */}
                     </Flex>
                   </Flex>

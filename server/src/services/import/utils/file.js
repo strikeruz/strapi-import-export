@@ -9,6 +9,7 @@ import fetch from 'node-fetch';
 import { isObjectSafe } from '../../../../libs/objects.js';
 
 async function findOrImportFile(fileEntry, user, { allowedFileTypes }) {
+  console.log('findOrImportFile', fileEntry);
   let obj = {};
   if (typeof fileEntry === 'string') {
     obj.url = fileEntry;
@@ -17,6 +18,7 @@ async function findOrImportFile(fileEntry, user, { allowedFileTypes }) {
   } else {
     throw new Error(`Invalid data format '${typeof fileEntry}' to import media. Only 'string', 'number', 'object' are accepted.`);
   }
+  console.log('findOrImportFile', JSON.stringify(obj, null, 2));
 
   if (obj.url) {
     const fileData = getFileDataFromRawUrl(obj.url);
@@ -80,6 +82,29 @@ const importFile = async ({ url, name, alternativeText, caption }, user) => {
   let file;
   try {
     file = await fetchFile(url);
+    console.log('importFile', JSON.stringify(file, null, 2));
+
+    // let [uploadedFile] = await strapi
+    //   .plugin('upload')
+    //   .service('upload')
+    //   .upload(
+    //     {
+    //       files: {
+    //         name: file.name,
+    //         type: file.type,
+    //         size: file.size,
+    //         path: file.path,
+    //       },
+    //       data: {
+    //         fileInfo: {
+    //           name: name || file.name,
+    //           alternativeText: alternativeText || '',
+    //           caption: caption || '',
+    //         },
+    //       },
+    //     },
+    //     { user },
+    //   );
 
     let [uploadedFile] = await strapi
       .plugin('upload')
@@ -87,10 +112,10 @@ const importFile = async ({ url, name, alternativeText, caption }, user) => {
       .upload(
         {
           files: {
-            name: file.name,
-            type: file.type,
+            filepath: file.path,
+            originalFileName: file.name,
             size: file.size,
-            path: file.path,
+            mimetype: file.type,
           },
           data: {
             fileInfo: {
@@ -102,6 +127,7 @@ const importFile = async ({ url, name, alternativeText, caption }, user) => {
         },
         { user },
       );
+
 
     return uploadedFile;
   } catch (err) {
@@ -115,6 +141,7 @@ const importFile = async ({ url, name, alternativeText, caption }, user) => {
 };
 
 const fetchFile = async (url) => {
+  console.log('fetchFile', url);
   try {
     const response = await fetch(url);
     const contentType = response.headers.get('content-type')?.split(';')?.[0] || '';
@@ -204,6 +231,7 @@ const getFileTypeChecker = (type) => {
 };
 
 const getFileDataFromRawUrl = (rawUrl) => {
+  console.log('getFileDataFromRawUrl', rawUrl);
   const parsedUrl = new URL(decodeURIComponent(rawUrl));
 
   const name = trim(parsedUrl.pathname, '/').replace(/\//g, '-');
