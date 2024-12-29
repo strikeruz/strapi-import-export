@@ -1,5 +1,6 @@
-import { Modal, Button, Typography, Flex, Box, Loader } from '@strapi/design-system';
-import { CheckCircle, Code as IconCode, File as IconFile, Upload } from '@strapi/icons';
+import { Modal, Button, Typography, Flex, Box, Loader, Accordion, Tabs } from '@strapi/design-system';
+import { CheckCircle, Code as IconCode, File as IconFile, Upload, CrossCircle, WarningCircle } from '@strapi/icons';
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useIntl } from 'react-intl';
@@ -78,6 +79,7 @@ import { ImportEditor } from './components/ImportEditor/ImportEditor';
 const ModalState = {
   SUCCESS: 'success',
   PARTIAL: 'partial',
+  ERROR: 'error',
   UNSET: 'unset',
 };
 
@@ -97,6 +99,7 @@ export const ImportModal = ({ onClose }) => {
   const [uploadSuccessful, setUploadSuccessful] = useState(ModalState.UNSET);
   const [uploadingData, setUploadingData] = useState(false);
   const [importFailuresContent, setImportFailuresContent] = useState('');
+  const [importErrorsContent, setImportErrorsContent] = useState('');
 
   const onDataChanged = (data) => {
     setData(data);
@@ -154,9 +157,9 @@ export const ImportModal = ({ onClose }) => {
         // },
       });
 
-      const { failures } = res;
+      const { failures, errors } = res.data;
       console.log('res', JSON.stringify(res, null, 2));
-      if (!failures?.length) {
+      if (!failures?.length && !errors?.length) {
         setUploadSuccessful(ModalState.SUCCESS);
         notify(
           i18n('plugin.message.import.success.imported.title'),
@@ -164,7 +167,8 @@ export const ImportModal = ({ onClose }) => {
           'success'
         );
         refreshView();
-      } else {
+      }
+      else if (failures?.length) {
         setUploadSuccessful(ModalState.PARTIAL);
         setImportFailuresContent(JSON.stringify(failures, null, '\t'));
         notify(
@@ -172,6 +176,10 @@ export const ImportModal = ({ onClose }) => {
           i18n('plugin.message.import.error.imported-partial.message'),
           'danger'
         );
+      }
+      else if (errors?.length) {
+        setUploadSuccessful(ModalState.ERROR);
+        setImportErrorsContent(JSON.stringify(errors, null, '\t'));
       }
     } catch (err) {
       console.log('err', err);
@@ -242,6 +250,7 @@ export const ImportModal = ({ onClose }) => {
   const showEditor = !uploadingData && uploadSuccessful === ModalState.UNSET && data;
   const showSuccess = !uploadingData && uploadSuccessful === ModalState.SUCCESS;
   const showPartialSuccess = !uploadingData && uploadSuccessful === ModalState.PARTIAL;
+  const showError = !uploadingData && uploadSuccessful === ModalState.ERROR;
 
   const showImportButton = showEditor;
   const showRemoveFileButton = showEditor;
@@ -326,6 +335,40 @@ export const ImportModal = ({ onClose }) => {
                 {i18n('plugin.import.detailed-information')}
               </Typography>
               <Editor content={importFailuresContent} language={'json'} readOnly />
+            </>
+          )}
+          {showError && (
+            <>
+              <Tabs.Root defaultValue="errors">
+                <Tabs.List>
+                  <Tabs.Trigger value="errors">Errors List</Tabs.Trigger>
+                  <Tabs.Trigger value="output">Errors Details</Tabs.Trigger>
+                </Tabs.List>
+                <Tabs.Content value="errors">
+                  <Typography textColor="neutral800" fontWeight="bold" as="h2">
+                    {i18n('plugin.import.errors')}
+                  </Typography>
+                  <Accordion.Root size="M">
+                    {JSON.parse(importErrorsContent).map((error, index) => (
+                      <Accordion.Item key={index} value={`acc-${index}`}>
+                        <Accordion.Header>
+                          <Accordion.Trigger icon={CrossCircle} description={error.data?.path || ''}>
+                            {error.error}
+                          </Accordion.Trigger>
+                        </Accordion.Header>
+                        <Accordion.Content>
+                          <Typography display="block" tag='pre' padding={4}>
+                            {typeof error.data?.entry === 'string' ? error.data?.entry : JSON.stringify(error.data?.entry || '', null, 2)}
+                          </Typography>
+                        </Accordion.Content>
+                      </Accordion.Item>
+                    ))}
+                  </Accordion.Root>
+                </Tabs.Content>
+                <Tabs.Content value="output">
+                  <Editor content={importErrorsContent} language={'json'} readOnly />
+                </Tabs.Content>
+              </Tabs.Root>
             </>
           )}
         </Modal.Body>

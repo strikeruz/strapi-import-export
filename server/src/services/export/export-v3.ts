@@ -279,15 +279,16 @@ async function exportDataV3({
       continue;
     }
 
+
     // Validate idField configuration
     validateIdField(model);
+
+
+    
 
     // Build populate object for relations and components
     const populate = buildPopulateForModel(currentSlug);
     console.log('Using populate:', JSON.stringify(populate, null, 2));
-
-
-    
 
     const documentIdFilter = documentIds?.length ? {
       documentId: { $in: documentIds }

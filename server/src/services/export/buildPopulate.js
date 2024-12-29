@@ -44,6 +44,28 @@ function buildComponentPopulate(componentModel, depth = 5, path = '') {
   return componentPopulate;
 }
 
+function buildDynamicZonePopulate(attr, depth = 5, path = '') {
+  const populate = {
+    on: {}
+  };
+
+  // Build populate structure for each possible component
+  for (const componentName of attr.components) {
+    const componentModel = getModel(componentName);
+    console.log(`Building populate for dynamic zone component: ${componentName}`);
+
+    // Get all attributes that need population in this component
+    const componentPopulate = buildComponentPopulate(componentModel, depth - 1, path);
+    
+    // Add to the 'on' object using the proper format: 'category.name'
+    populate.on[componentName] = componentPopulate === true 
+      ? { populate: '*' }
+      : { populate: componentPopulate };
+  }
+
+  return populate;
+}
+
 export function buildPopulateForModel(slug, depth = 5) {
   console.log(`Building populate for ${slug} at depth ${depth}`);
   
@@ -79,20 +101,8 @@ export function buildPopulateForModel(slug, depth = 5) {
           ? true 
           : { populate: componentPopulate };
       } else if (isDynamicZoneAttribute(attrDef)) {
-        const dynamicZonePopulate = {};
-        
-        for (const componentName of attrDef.components) {
-          const componentModel = getModel(componentName);
-          const componentPopulate = buildComponentPopulate(componentModel, depth - 1, `${attrName}.__component`);
-          
-          if (componentPopulate !== true) {
-            Object.assign(dynamicZonePopulate, componentPopulate);
-          }
-        }
-        
-        populate[attrName] = Object.keys(dynamicZonePopulate).length > 0 
-          ? { populate: dynamicZonePopulate }
-          : true;
+        console.log(`Building dynamic zone populate for ${attrName}`);
+        populate[attrName] = buildDynamicZonePopulate(attrDef, depth - 1, attrName);
       } else if (isRelationAttribute(attrDef)) {
         populate[attrName] = true;
       } else if (isMediaAttribute(attrDef)) {

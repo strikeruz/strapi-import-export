@@ -45,8 +45,12 @@ async function parseCsv(dataRaw, { slug }) {
 }
 
 async function parseJson(dataRaw) {
-  let data = JSON.parse(dataRaw);
-  return data;
+  try {
+    let data = JSON.parse(dataRaw);
+    return data;
+  } catch (err) {
+    throw new Error(`Failed to parse JSON data: ${err.message}`);
+  }
 }
 
 async function parseJso(dataRaw) {

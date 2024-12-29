@@ -12,7 +12,21 @@ async function importData(ctx) {
   const { user } = ctx.state;
   const { data } = ctx.request.body;
   const { slug, data: dataRaw, format, idField } = data;
-  const fileContent = await getService('import').parseInputData(format, dataRaw, { slug });
+  let fileContent;
+  try {
+    fileContent = await getService('import').parseInputData(format, dataRaw, { slug });
+  } catch (error) {
+    ctx.body = {
+      errors: [{
+        error: error.message,
+        data: {
+          entry: dataRaw,
+          path: '',
+        }
+      }],
+    };
+    return;
+  }
 
   let res;
   if (fileContent?.version === 3) {
@@ -35,8 +49,11 @@ async function importData(ctx) {
     });
   }
 
+  console.log('res', JSON.stringify(res, null, 2));
+
   ctx.body = {
-    failures: res.failures,
+    failures: res.failures || [],
+    errors: res.errors || [],
   };
 }
 
