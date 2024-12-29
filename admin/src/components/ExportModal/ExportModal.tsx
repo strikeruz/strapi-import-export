@@ -25,7 +25,7 @@ export interface ExportOptions {
     relationsAsId: boolean;
     deepness: number;
     exportPluginsContentTypes: boolean;
-    exportAllLocales?: boolean;
+    exportAllLocales: boolean;
 }
 
 export interface ExportModalProps {
@@ -40,6 +40,7 @@ const DEFAULT_OPTIONS = {
     relationsAsId: false,
     deepness: 5,
     exportPluginsContentTypes: false,
+    exportAllLocales: false,
 };
 
 const isFetchError = (err: unknown): err is FetchError => {
@@ -88,6 +89,7 @@ export const useExportModal = ({
                     deepness: options.deepness,
                     exportPluginsContentTypes: options.exportPluginsContentTypes,
                     documentIds: documentIds ?? undefined,
+                    exportAllLocales: options.exportAllLocales,
                 }
             });
             setData(res.data);
@@ -251,6 +253,14 @@ export const ExportModalContent: React.FC<{ state: ReturnType<typeof useExportMo
                     {state.shouldShowOption('exportPluginsContentTypes') && (
                         <Checkbox checked={state.options.exportPluginsContentTypes} onCheckedChange={(value) => state.handleSetOption('exportPluginsContentTypes', value==true)}>
                             {i18n('plugin.export.plugins-content-types')}
+                        </Checkbox>
+                    )}
+                    {state.shouldShowOption('exportAllLocales') && (
+                        <Checkbox 
+                            checked={state.options.exportAllLocales} 
+                            onCheckedChange={(value) => state.handleSetOption('exportAllLocales', value==true)}
+                        >
+                            {i18n('plugin.export.export-all-locales')}
                         </Checkbox>
                     )}
                     {state.shouldShowDeepnessOption() && (

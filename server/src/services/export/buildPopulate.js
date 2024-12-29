@@ -1,5 +1,49 @@
 import { getModelAttributes, getModel, isRelationAttribute, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribute } from '../../utils/models';
 
+function buildComponentPopulate(componentModel, depth = 5, path = '') {
+  if (depth < 1) return true;
+
+  const componentPopulate = {};
+  
+  for (const [attrName, attrDef] of Object.entries(componentModel.attributes)) {
+    if (!attrDef) continue;
+
+    const currentPath = path ? `${path}.${attrName}` : attrName;
+
+    if (isRelationAttribute(attrDef)) {
+      componentPopulate[attrName] = true;
+    } else if (isMediaAttribute(attrDef)) {
+      componentPopulate[attrName] = true;
+    } else if (isComponentAttribute(attrDef)) {
+      const nestedComponentModel = getModel(attrDef.component);
+      const nestedPopulate = buildComponentPopulate(nestedComponentModel, 1, currentPath);
+      
+      if (nestedPopulate === true) {
+        componentPopulate[attrName] = true;
+      } else {
+        componentPopulate[attrName] = { populate: nestedPopulate };
+      }
+    } else if (isDynamicZoneAttribute(attrDef)) {
+      const dynamicZonePopulate = {};
+      
+      for (const componentName of attrDef.components) {
+        const dzComponentModel = getModel(componentName);
+        const dzComponentPopulate = buildComponentPopulate(dzComponentModel, depth - 1, `${currentPath}.__component`);
+        
+        if (dzComponentPopulate !== true) {
+          Object.assign(dynamicZonePopulate, dzComponentPopulate);
+        }
+      }
+      
+      componentPopulate[attrName] = Object.keys(dynamicZonePopulate).length > 0 
+        ? { populate: dynamicZonePopulate }
+        : true;
+    }
+  }
+
+  return componentPopulate;
+}
+
 export function buildPopulateForModel(slug, depth = 5) {
   console.log(`Building populate for ${slug} at depth ${depth}`);
   
@@ -28,40 +72,27 @@ export function buildPopulateForModel(slug, depth = 5) {
       
       if (isComponentAttribute(attrDef)) {
         console.log(`Building nested populate for component ${attrDef.component}`);
-        // Get the component's model and build its populate object
         const componentModel = getModel(attrDef.component);
-        const componentPopulate = {};
+        const componentPopulate = buildComponentPopulate(componentModel, depth - 1, attrName);
         
-        // Add population for all special fields in the component
-        for (const [compAttrName, compAttrDef] of Object.entries(componentModel.attributes)) {
-          if (isRelationAttribute(compAttrDef) || isMediaAttribute(compAttrDef)) {
-            componentPopulate[compAttrName] = true;
-          }
-        }
-        
-        // If the component has fields to populate, create a nested populate structure
-        if (Object.keys(componentPopulate).length > 0) {
-          populate[attrName] = { populate: componentPopulate };
-        } else {
-          populate[attrName] = true;
-        }
+        populate[attrName] = componentPopulate === true 
+          ? true 
+          : { populate: componentPopulate };
       } else if (isDynamicZoneAttribute(attrDef)) {
-        // For dynamic zones, create a populate structure for each possible component
         const dynamicZonePopulate = {};
+        
         for (const componentName of attrDef.components) {
           const componentModel = getModel(componentName);
-          for (const [compAttrName, compAttrDef] of Object.entries(componentModel.attributes)) {
-            if (isRelationAttribute(compAttrDef) || isMediaAttribute(compAttrDef)) {
-              dynamicZonePopulate[compAttrName] = true;
-            }
+          const componentPopulate = buildComponentPopulate(componentModel, depth - 1, `${attrName}.__component`);
+          
+          if (componentPopulate !== true) {
+            Object.assign(dynamicZonePopulate, componentPopulate);
           }
         }
         
-        if (Object.keys(dynamicZonePopulate).length > 0) {
-          populate[attrName] = { populate: '*' };
-        } else {
-          populate[attrName] = '*';
-        }
+        populate[attrName] = Object.keys(dynamicZonePopulate).length > 0 
+          ? { populate: dynamicZonePopulate }
+          : true;
       } else if (isRelationAttribute(attrDef)) {
         populate[attrName] = true;
       } else if (isMediaAttribute(attrDef)) {

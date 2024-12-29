@@ -41,12 +41,20 @@ function processDataWithSchema(data, schema: Schema.Schema, options = { processL
   if (!data) return null;
 
   const processed = { ...data };
-  delete processed.id;
+  
+  // Only delete id if it's not being used as the identifier field
+  const idField = getIdentifierField(schema);
+  console.log('Identifier field:', idField, 'schema:', schema.uid, 'id:', processed.id);
+  if (idField !== 'id') {
+    delete processed.id;
+  }
+  
   delete processed.documentId;
 
   if (!options.processLocalizations) {
     delete processed.localizations;
   }
+  
 
   for (const [key, attr] of Object.entries(schema.attributes)) {
     console.log(`Processing attribute ${key} of type ${attr.type}`);
@@ -141,14 +149,14 @@ function groupByLocale(entry, publishedEntry, model, exportAllLocales = true) {
     published?: Record<string, any>;
   } = {};
   
-  // Process main entry
-  const mainLocale = entry.locale;
-  // If no locale field exists or we're not exporting all locales, use 'default'
-  const localeKey = (!mainLocale || !exportAllLocales) ? 'default' : mainLocale;
+  // // Process main entry
+  // const mainLocale = entry.locale;
+  // // If no locale field exists or we're not exporting all locales, use 'default'
+  // const localeKey = (!mainLocale || !exportAllLocales) ? 'default' : mainLocale;
 
   // Always remove localizations from the processed data
   const processEntry = (data) => {
-    const processed = processDataWithSchema(data, model, { processLocalizations: false });
+    const processed = processDataWithSchema(data, model, { processLocalizations: true });
     delete processed.localizations;
     return processed;
   };
@@ -159,11 +167,13 @@ function groupByLocale(entry, publishedEntry, model, exportAllLocales = true) {
 
   // Only include draft if it's different from published
   if (!publishedData || !areVersionsEqual(draftData, publishedData)) {
-    result.draft = { [localeKey]: draftData };
+    // result.draft = { [localeKey]: draftData };
+    result.draft = { default: draftData };
   }
 
   // Process localizations only if we're exporting all locales and we have a real locale
-  if (mainLocale && exportAllLocales && entry.localizations?.length) {
+  // if (mainLocale && exportAllLocales && entry.localizations?.length) {
+  if (exportAllLocales && entry.localizations?.length) {
     for (const draftLoc of entry.localizations) {
       const locale = draftLoc.locale;
       if (!locale) continue;
@@ -184,10 +194,12 @@ function groupByLocale(entry, publishedEntry, model, exportAllLocales = true) {
 
   // Add published versions
   if (publishedEntry) {
-    result.published = { [localeKey]: processEntry(publishedEntry) };
+    // result.published = { [localeKey]: processEntry(publishedEntry) };
+    result.published = { default: processEntry(publishedEntry) };
 
     // Add published localizations only if we're exporting all locales and we have a real locale
-    if (mainLocale && exportAllLocales && publishedEntry.localizations?.length) {
+    // if (mainLocale && exportAllLocales && publishedEntry.localizations?.length) {
+    if (exportAllLocales && publishedEntry.localizations?.length) {
       for (const publishedLoc of publishedEntry.localizations) {
         const locale = publishedLoc.locale;
         if (!locale) continue;
@@ -246,7 +258,7 @@ async function exportDataV3({
   applySearch,
   exportPluginsContentTypes,
   documentIds,
-  exportAllLocales = false // Add new flag with default false for backward compatibility
+  exportAllLocales = true // Add new flag with default false for backward compatibility
 }) {
   console.log('exportDataV3 called with:', { slug, search, applySearch, exportPluginsContentTypes, documentIds });
   

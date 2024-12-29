@@ -53,39 +53,40 @@ async function importDataV3(fileContent: { data: Record<UID.ContentType, EntryVe
         // First handle published versions if they exist
         if (entry.published) {
           // Find the default locale version (usually 'en')
-          const defaultLocale = Object.keys(entry.published)[0];
-          const publishedData = entry.published[defaultLocale];
+          const firstLocale = Object.keys(entry.published)[0];
+          const firstData = entry.published[firstLocale];
           
           // Look for existing entry using the default locale version
           const existing = await strapi.documents(contentType).findFirst({
-            filters: { [idField]: publishedData[idField] }
+            filters: { [idField]: firstData[idField] }
           });
 
-          const processedPublished = await processEntryData(publishedData, model, { user });
+          const processedPublished = await processEntryData(firstData, model, { user });
 
           if (existing) {
             await strapi.documents(contentType).update({
               documentId: existing.documentId,
               data: processedPublished,
+              locale: firstLocale === 'default' ? undefined : firstLocale,
               status: 'published'
             });
             documentId = existing.documentId;
           } else {
             const created = await strapi.documents(contentType).create({
               data: processedPublished,
-              status: 'published'
+              status: 'published',
+              locale: firstLocale === 'default' ? undefined : firstLocale,
             });
             documentId = created.documentId;
           }
 
           // Handle other locales for published version
           for (const [locale, localeData] of Object.entries(entry.published)) {
-            if (locale === defaultLocale) continue;
 
             const processedLocale = await processEntryData(localeData, model, { user });
             await strapi.documents(contentType).update({
               documentId,
-              locale,
+              locale: locale === 'default' ? undefined : locale,
               data: processedLocale,
               status: 'published'
             });
@@ -96,13 +97,13 @@ async function importDataV3(fileContent: { data: Record<UID.ContentType, EntryVe
         if (entry.draft) {
           // If we don't have a documentId yet (no published version), create from draft
           if (!documentId) {
-            const defaultLocale = Object.keys(entry.draft)[0];
-            const draftData = entry.draft[defaultLocale];
+            const firstLocale = Object.keys(entry.draft)[0];
+            const firstData = entry.draft[firstLocale];
             const existing = await strapi.documents(contentType).findFirst({
-              filters: { [idField]: draftData[idField] }
+              filters: { [idField]: firstData[idField] }
             });
 
-            const processedDraft = await processEntryData(draftData, model, { user });
+            const processedDraft = await processEntryData(firstData, model, { user });
 
             if (existing) {
               if (!allowDraftOnPublished) {
@@ -122,6 +123,7 @@ async function importDataV3(fileContent: { data: Record<UID.ContentType, EntryVe
 
               await strapi.documents(contentType).update({
                 documentId: existing.documentId,
+                locale: firstLocale === 'default' ? undefined : firstLocale,
                 data: processedDraft,
                 status: 'draft'
               });
@@ -129,21 +131,22 @@ async function importDataV3(fileContent: { data: Record<UID.ContentType, EntryVe
             } else {
               const created = await strapi.documents(contentType).create({
                 data: processedDraft,
-                status: 'draft'
+                status: 'draft',
+                locale: firstLocale === 'default' ? undefined : firstLocale,
               });
               documentId = created.documentId;
             }
-          }
-
-          // Handle all draft locales
-          for (const [locale, localeData] of Object.entries(entry.draft)) {
-            const processedLocale = await processEntryData(localeData, model, { user });
-            await strapi.documents(contentType).update({
-              documentId,
-              locale,
-              data: processedLocale,
-              status: 'draft'
-            });
+          } else {
+            // Handle all draft locales
+            for (const [locale, localeData] of Object.entries(entry.draft)) {
+              const processedLocale = await processEntryData(localeData, model, { user });
+              await strapi.documents(contentType).update({
+                documentId,
+                locale: locale === 'default' ? undefined : locale,
+                data: processedLocale,
+                status: 'draft'
+              });
+            }
           }
         }
       } catch (error) {

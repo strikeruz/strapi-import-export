@@ -156,7 +156,7 @@ export const ImportModal = ({ onClose }) => {
 
       const { failures } = res;
       console.log('res', JSON.stringify(res, null, 2));
-      if (!failures.length) {
+      if (!failures?.length) {
         setUploadSuccessful(ModalState.SUCCESS);
         notify(
           i18n('plugin.message.import.success.imported.title'),
