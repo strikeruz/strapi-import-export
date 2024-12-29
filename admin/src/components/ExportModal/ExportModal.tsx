@@ -17,6 +17,7 @@ import { useSlug } from '../../hooks/useSlug';
 import { dataFormatConfigs, dataFormats } from '../../utils/dataFormats';
 import { handleRequestErr } from '../../utils/error';
 import { Editor } from '../Editor';
+import type { FetchError } from '@strapi/strapi/admin';
 
 export interface ExportOptions {
     exportFormat: typeof dataFormats[keyof typeof dataFormats];
@@ -40,6 +41,11 @@ const DEFAULT_OPTIONS = {
     deepness: 5,
     exportPluginsContentTypes: false,
 };
+
+const isFetchError = (err: unknown): err is FetchError => {
+    return typeof err === 'object' && err !== null && 'name' in err && err.name === 'FetchError';
+};
+
 export const useExportModal = ({
     availableExportFormats = [dataFormats.CSV, dataFormats.JSON_V2, dataFormats.JSON_V3, dataFormats.JSON],
     unavailableOptions = [],
@@ -85,25 +91,33 @@ export const useExportModal = ({
                 }
             });
             setData(res.data);
-        } catch (err) {
-            console.log('err', err);
-            handleRequestErr(err, {
-                403: () => notify(
-                    i18n('plugin.message.export.error.forbidden.title'), 
-                    i18n('plugin.message.export.error.forbidden.message'), 
-                    'danger'
-                ),
-                412: () => notify(
-                    i18n('plugin.message.export.error.idfield.title'),
-                    err.response.data.message,
-                    'danger'
-                ),
-                default: () => notify(
+        } catch (err: unknown) {
+            if (isFetchError(err)) {
+                handleRequestErr(err as Error, {
+                    403: () => notify(
+                        i18n('plugin.message.export.error.forbidden.title'),
+                        i18n('plugin.message.export.error.forbidden.message'), 
+                        'danger'
+                    ),
+                    412: () => notify(
+                        i18n('plugin.message.export.error.idfield.title'),
+                        err.message,
+                        'danger'
+                    ),
+                    default: () => notify(
+                        i18n('plugin.message.export.error.unexpected.title'), 
+                        i18n('plugin.message.export.error.unexpected.message'), 
+                        'danger'
+                    ),
+                });
+            } else {
+
+                notify(
                     i18n('plugin.message.export.error.unexpected.title'), 
                     i18n('plugin.message.export.error.unexpected.message'), 
                     'danger'
-                ),
-            });
+                );
+            }
         } finally {
             setFetchingData(false);
         }
@@ -143,7 +157,6 @@ export const useExportModal = ({
     };
 
     const resetOptions = () => {
-        notify(i18n('plugin.export.reset-options'), '', 'success');
         const storedPreferences = getPreferences();
         setOptions({ ...DEFAULT_OPTIONS, ...storedPreferences });
         setData(null);

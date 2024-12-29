@@ -1,1 +1,1 @@
-export { default } from './export-controller.js';
+export { default } from './export-controller';

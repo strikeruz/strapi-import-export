@@ -1,4 +1,4 @@
-import { getModelAttributes, getModel, isRelationAttribute, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribute } from '../../utils/models.js';
+import { getModelAttributes, getModel, isRelationAttribute, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribute } from '../../utils/models';
 
 export function buildPopulateForModel(slug, depth = 5) {
   console.log(`Building populate for ${slug} at depth ${depth}`);
@@ -58,9 +58,9 @@ export function buildPopulateForModel(slug, depth = 5) {
         }
         
         if (Object.keys(dynamicZonePopulate).length > 0) {
-          populate[attrName] = { populate: dynamicZonePopulate };
+          populate[attrName] = { populate: '*' };
         } else {
-          populate[attrName] = true;
+          populate[attrName] = '*';
         }
       } else if (isRelationAttribute(attrDef)) {
         populate[attrName] = true;

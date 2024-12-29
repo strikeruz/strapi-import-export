@@ -1,6 +1,6 @@
 import { CustomSlugs } from '../../../config/constants.js';
 import { getService } from '../../../utils/utils.js';
-import { getAllSlugs } from '../../../utils/models.js';
+import { getAllSlugs } from '../../../utils/models';
 import { handleAsyncError } from '../../content-api/utils.js';
 
 import type { Context } from 'koa';
@@ -34,13 +34,18 @@ const exportData: Core.ControllerHandler = async (ctx) => {
       data,
     };
   } catch (error) {
-    if (error.message.includes('must be both required and unique')) {
-      return ctx.preconditionFailed(error.message, {
-        error: 'IdField Configuration Error',
-        message: error.message
+    console.log('error', error);
+    if (error.message.includes('IdField not found in model')) {
+      ctx.preconditionFailed(error.message, {
+        cause: 'IdField Not Found',
       });
+    } else if (error.message.includes('IdField misconfigured in model')) {
+      ctx.preconditionFailed(error.message, {
+        cause: 'IdField Configuration Error',
+      });
+    } else {
+      ctx.badRequest(error.message);
     }
-    throw error;
   }
 };
 

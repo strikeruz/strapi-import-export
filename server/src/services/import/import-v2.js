@@ -5,7 +5,7 @@ import pick from 'lodash/pick';
 import castArray from 'lodash/castArray';
 import { extract, toArray } from '../../../libs/arrays.js';
 import { ObjectBuilder } from '../../../libs/objects.js';
-import { getModel, getModelAttributes, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribute, isRelationAttribute } from '../../utils/models.js';
+import { getModel, getModelAttributes, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribute, isRelationAttribute } from '../../utils/models';
 import { head, toPairs } from 'lodash';
 import { findOrImportFile } from './utils/file.js';
 

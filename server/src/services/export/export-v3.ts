@@ -1,8 +1,9 @@
-import { getModel, getModelAttributes, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribute, isRelationAttribute } from '../../utils/models.js';
-import { getAllSlugs } from '../../utils/models.js';
+import { getModel, getModelAttributes, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribute, isRelationAttribute, getAllSlugs } from '../../utils/models';
 import { CustomSlugs, CustomSlugToSlug } from '../../config/constants.js';
 import { buildPopulateForModel } from './buildPopulate.js';
 import { getConfig } from '../../utils/getConfig.js';
+
+import { Struct, Schema, UID } from '@strapi/types';
 
 /**
  * 
@@ -34,7 +35,7 @@ const computeUrl = (relativeUrl) => {
 /**
  * Recursively process any data object according to its schema
  */
-function processDataWithSchema(data, schema, options = { processLocalizations: true }) {
+function processDataWithSchema(data, schema: Schema.Schema, options = { processLocalizations: true }) {
   console.log(`Processing data for schema: ${schema.uid}`);
   console.log('Raw data:', JSON.stringify(data, null, 2));
   if (!data) return null;
@@ -67,7 +68,7 @@ function processDataWithSchema(data, schema, options = { processLocalizations: t
     }
 
     if (isRelationAttribute(attr)) {
-      const relatedModel = getModel(attr.target);
+      const relatedModel = getModel((attr as Schema.Attribute.RelationWithTarget).target);
       const relatedIdField = getIdentifierField(relatedModel);
       console.log(`Relation ${key} uses identifier field ${relatedIdField}`);
       
@@ -135,7 +136,10 @@ function processDataWithSchema(data, schema, options = { processLocalizations: t
  * Group entry data by locale, comparing with published version to only include changed drafts
  */
 function groupByLocale(entry, publishedEntry, model, exportAllLocales = true) {
-  const result = {};
+  const result: {
+    draft?: Record<string, any>;
+    published?: Record<string, any>;
+  } = {};
   
   // Process main entry
   const mainLocale = entry.locale;
@@ -215,16 +219,20 @@ function validateIdField(model) {
   const attribute = model.attributes[idField];
   
   if (!attribute) {
-    throw new Error(`IdField ${idField} not found in model ${model.uid}`);
+    throw new Error(`IdField not found in model: Field '${idField}' is missing from model '${model.uid}'`);
   }
 
   // Check if the field is required and unique
   if (!attribute.required || !attribute.unique) {
     throw new Error(
-      `IdField ${idField} in model ${model.uid} must be both required and unique. ` +
+      `IdField misconfigured in model: Field '${idField}' in model '${model.uid}' must be both required and unique. ` +
       `Current settings - required: ${!!attribute.required}, unique: ${!!attribute.unique}`
     );
   }
+
+
+
+
 
   return idField;
 }
@@ -260,15 +268,14 @@ async function exportDataV3({
     }
 
     // Validate idField configuration
-    try {
-      validateIdField(model);
-    } catch (error) {
-      throw new Error(`Validation failed for ${currentSlug}: ${error.message}`);
-    }
+    validateIdField(model);
 
     // Build populate object for relations and components
     const populate = buildPopulateForModel(currentSlug);
-    console.log('Using populate:', populate);
+    console.log('Using populate:', JSON.stringify(populate, null, 2));
+
+
+    
 
     const documentIdFilter = documentIds?.length ? {
       documentId: { $in: documentIds }

@@ -1,4 +1,4 @@
-import { getModelAttributes } from '../../../utils/models.js';
+import { getModelAttributes } from '../../../utils/models';
 
 const getModelAttributesEndpoint = async (ctx) => {
   const { slug } = ctx.params;

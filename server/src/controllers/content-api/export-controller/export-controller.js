@@ -1,8 +1,8 @@
 import Joi from 'joi';
 
-import { getService } from '../../../utils/utils.js';
-import { checkParams, handleAsyncError } from '../utils.js';
-import { exportDataV3 } from '../../../services/export/export-v3.js';
+import { getService } from '../../../utils/utils';
+import { checkParams, handleAsyncError } from '../utils';
+import { exportDataV3 } from '../../../services/export/export-v3';
 
 const bodySchema = Joi.object({
   slug: Joi.string().required(),
@@ -38,7 +38,7 @@ const exportData = async (ctx) => {
     if (error.message.includes('must be both required and unique')) {
       return ctx.preconditionFailed({
         error: 'IdField Configuration Error',
-        message: error.message
+        // message: error.message
       });
     }
     throw error;

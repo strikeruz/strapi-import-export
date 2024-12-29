@@ -1,7 +1,7 @@
 import { isArraySafe, toArray } from '../../../libs/arrays.js';
 import { ObjectBuilder, isObjectSafe } from '../../../libs/objects.js';
 import { CustomSlugs } from '../../config/constants.js';
-import { getModelAttributes, getModel } from '../../utils/models.js';
+import { getModelAttributes, getModel } from '../../utils/models';
 import { findOrImportFile } from './utils/file.js';
 import { parseInputData } from './parsers.js';
 

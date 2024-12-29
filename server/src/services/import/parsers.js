@@ -1,7 +1,7 @@
 import csvtojson from 'csvtojson';
 import { isArraySafe } from '../../../libs/arrays.js';
 import { isObjectSafe } from '../../../libs/objects.js';
-import { getModelAttributes } from '../../utils/models.js';
+import { getModelAttributes } from '../../utils/models';
 // import { EnumValues } from '../../../types.js';
 // import { SchemaUID } from '../../types.js';
 

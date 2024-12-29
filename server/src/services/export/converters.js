@@ -2,7 +2,7 @@ import { isArraySafe, toArray } from '../../../libs/arrays.js';
 import { isObjectSafe } from '../../../libs/objects.js';
 import { CustomSlugToSlug, CustomSlugs } from '../../config/constants.js';
 import { getConfig } from '../../utils/getConfig.js';
-import { getModelAttributes, getModel } from '../../utils/models.js';
+import { getModelAttributes, getModel } from '../../utils/models';
 
 const convertToCsv = (entries, options) => {
   entries = toArray(entries);

@@ -1,5 +1,5 @@
 import { CustomSlugs } from '../../../config/constants.js';
-import { getAllSlugs } from '../../../utils/models.js';
+import { getAllSlugs } from '../../../utils/models';
 import { getService } from '../../../utils/utils.js';
 
 export default ({ strapi }) => importData;

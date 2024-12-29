@@ -1,4 +1,4 @@
-import { getModel, getModelAttributes, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribute, isRelationAttribute } from '../../utils/models.js';
+import { getModel, getModelAttributes, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribute, isRelationAttribute } from '../../utils/models';
 import { getIdentifierField } from '../export/export-v3.js';
 import { findOrImportFile } from './utils/file.js';
 import { Struct, Schema, UID } from '@strapi/types';

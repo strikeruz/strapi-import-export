@@ -16,7 +16,7 @@ import {
   deleteEntryProp,
   setEntryProp,
   getEntryProp,
-} from '../../utils/models.js';
+} from '../../utils/models';
 import * as converters from './converters-v2.js';
 
 const dataFormats = {

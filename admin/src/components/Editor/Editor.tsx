@@ -3,7 +3,21 @@ import './style.css';
 import React, { useEffect, useState } from 'react';
 import CodeMirror from "@uiw/react-codemirror";
 
-export const Editor = ({ content = '', language = 'json', readOnly = false, onChange, style }) => {
+import { ReactCodeMirrorProps } from '@uiw/react-codemirror';
+
+export const Editor = ({ 
+  content = '', 
+  language = 'json', 
+  readOnly = false, 
+  onChange,
+  style 
+}: {
+  content?: string | object;
+  language?: string;
+  readOnly?: boolean;
+  onChange?: ReactCodeMirrorProps['onChange'];
+  style?: React.CSSProperties;
+}) => {
  
   const [codeMirrorContent, setCodeMirrorContent] = useState('');
 
