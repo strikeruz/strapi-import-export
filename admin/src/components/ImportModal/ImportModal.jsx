@@ -106,6 +106,7 @@ export const ImportModal = ({ onClose }) => {
   };
 
   const onOptionsChanged = (options) => {
+    console.log('onOptionsChanged', options);
     setOptions(options);
   };
 
@@ -140,6 +141,7 @@ export const ImportModal = ({ onClose }) => {
   const resetDataSource = () => {
     setData('');
     setDataFormat(dataFormats.CSV);
+    setUploadSuccessful(ModalState.UNSET);
     setFile({});
   };
 
@@ -253,7 +255,7 @@ export const ImportModal = ({ onClose }) => {
   const showError = !uploadingData && uploadSuccessful === ModalState.ERROR;
 
   const showImportButton = showEditor;
-  const showRemoveFileButton = showEditor;
+  const showRemoveFileButton = showEditor || showError;
 
   return (
     <Modal.Root onClose={onClose}>

@@ -43,13 +43,17 @@ function processDataWithSchema(data, schema: Schema.Schema, options = { processL
   const processed = { ...data };
   
   // Only delete id if it's not being used as the identifier field
-  const idField = getIdentifierField(schema);
-  console.log('Identifier field:', idField, 'schema:', schema.uid, 'id:', processed.id);
-  if (idField !== 'id') {
+  // const idField = getIdentifierField(schema);
+  // console.log('Identifier field:', idField, 'schema:', schema.uid, 'id:', processed.id);
+  // if (idField !== 'id') {
     delete processed.id;
-  }
+  // }
+  
   
   delete processed.documentId;
+
+  delete processed.createdBy; // TODO: we can't import data as a different user, so lets not export it
+  delete processed.updatedBy; // TODO: we can't import data as a different user, so lets not export it
 
   if (!options.processLocalizations) {
     delete processed.localizations;
@@ -284,7 +288,7 @@ async function exportDataV3({
     validateIdField(model);
 
 
-    
+
 
     // Build populate object for relations and components
     const populate = buildPopulateForModel(currentSlug);

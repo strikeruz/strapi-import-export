@@ -18,25 +18,47 @@ async function findOrImportFile(fileEntry, user, { allowedFileTypes }) {
   } else {
     throw new Error(`Invalid data format '${typeof fileEntry}' to import media. Only 'string', 'number', 'object' are accepted.`);
   }
-  console.log('findOrImportFile', JSON.stringify(obj, null, 2));
+  console.log('findOrImportFile object:', JSON.stringify(obj, null, 2));
 
-  if (obj.url) {
-    const fileData = getFileDataFromRawUrl(obj.url);
-    if (!obj.name) {
-      obj.name = fileData.name;
-    }
-    if (!obj.hash) {
-      obj.hash = fileData.hash;
-    }
-  }
-
+  // First try to find file with existing hash or name
   let file = await findFile(obj, user, allowedFileTypes);
-
-  if (file && !isExtensionAllowed(file.ext.substring(1), allowedFileTypes)) {
-    file = null;
+  if (file) {
+    console.log('Found file using existing hash/name');
+    if (isExtensionAllowed(file.ext.substring(1), allowedFileTypes)) {
+      return file;
+    }
+    console.log('Found file has disallowed extension');
+    return null;
   }
 
-  return file;
+  // If not found and we have a URL, process it
+  if (obj.url) {
+    // Check if URL is absolute
+    const isAbsoluteUrl = obj.url.startsWith('http://') || obj.url.startsWith('https://');
+    console.log('URL is absolute:', isAbsoluteUrl);
+
+    if (isAbsoluteUrl) {
+      const fileData = getFileDataFromRawUrl(obj.url);
+      // Only override name/hash if they weren't provided
+      if (!obj.name) {
+        obj.name = fileData.name;
+      }
+      if (!obj.hash) {
+        obj.hash = fileData.hash;
+      }
+      
+      // Try finding again with the new hash/name
+      file = await findFile(obj, user, allowedFileTypes);
+      if (file && isExtensionAllowed(file.ext.substring(1), allowedFileTypes)) {
+        console.log('Found file after processing absolute URL');
+        return file;
+      }
+    } else {
+      console.log('Skipping URL processing for relative URL:', obj.url);
+    }
+  }
+
+  return null;
 }
 
 const findFile = async ({ hash, name, url, alternativeText, caption }, user, allowedFileTypes) => {

@@ -1,4 +1,4 @@
-import { Box, Tabs, Typography, Grid, Field, SingleSelect, SingleSelectOption } from '@strapi/design-system';
+import { Box, Tabs, Typography, Grid, Field, SingleSelect, SingleSelectOption, Checkbox } from '@strapi/design-system';
 import React, { useEffect, useState } from 'react';
 import { useFetchClient } from '@strapi/admin/strapi-admin'; // Import useFetchClient hook
 import { PLUGIN_ID } from '../../../../pluginId'; // Ensure PLUGIN_ID is correctly imported
@@ -12,7 +12,10 @@ export const ImportEditor = ({ file, data, dataFormat, slug, onDataChanged, onOp
   const [attributeNames, setAttributeNames] = useState([]);
   const fetchClient = useFetchClient(); // Use the hook here within the component
 
-  const { options, getOption, setOption } = useForm({ idField: 'id' });
+  const { options, getOption, setOption } = useForm({ 
+    idField: 'id',
+    updateExisting: false // Add default value for updateExisting
+  });
 
   useEffect(() => {
     const fetchAttributeNames = async () => {
@@ -79,6 +82,26 @@ export const ImportEditor = ({ file, data, dataFormat, slug, onDataChanged, onOp
                     <SingleSelectOption value="">No attribute found</SingleSelectOption>
                   )}
                 </SingleSelect>
+              </Field.Root>
+            </Grid.Item>
+
+            <Grid.Item>
+              <Field.Root>
+                <Checkbox
+                  value={getOption('updateExisting')}
+                  onCheckedChange={(value) => setOption('updateExisting', value === true)}
+                >
+                  {i18n('plugin.form.field.update-existing.label')}
+                </Checkbox>
+                <Checkbox
+                  value={getOption('ignoreMissingRelations')}
+                  onCheckedChange={(value) => setOption('ignoreMissingRelations', value === true)}
+                >
+                  {i18n('plugin.form.field.ignore-missing-relations.label')}
+                </Checkbox>
+                <Field.Hint>
+                  {i18n('plugin.form.field.update-existing.hint')}
+                </Field.Hint>
               </Field.Root>
             </Grid.Item>
           </Grid.Root>
