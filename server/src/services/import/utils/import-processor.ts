@@ -5,12 +5,6 @@ import { getModel, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribut
 import { getIdentifierField } from '../../../utils/identifiers';
 import { findOrImportFile } from '../utils/file';
 
-interface ProcessedEntry {
-    contentType: UID.ContentType;
-    idFieldValue: any;
-    documentId: string;
-}
-
 export class ImportProcessor {
     constructor(
         private context: ImportContext,
@@ -20,8 +14,6 @@ export class ImportProcessor {
     ) {}
 
     async process(): Promise<ImportResult> {
-        const processedEntries: ProcessedEntry[] = [];
-
         for (const [contentType, entries] of Object.entries(this.context.importData) as [UID.ContentType, EntryVersion[]][]) {
             const model = getModel(contentType);
             if (!model) {
@@ -34,7 +26,7 @@ export class ImportProcessor {
             // Import each entry's versions
             for (const entry of entries) {
                 try {
-                    await this.processEntry(contentType, entry, model, idField, processedEntries);
+                    await this.processEntry(contentType, entry, model, idField);
                 } catch (error) {
                     console.error(`Failed to import entry`, error);
                     this.context.addFailure(error.message || 'Unknown error', entry);
@@ -49,31 +41,21 @@ export class ImportProcessor {
         contentType: UID.ContentType,
         entry: EntryVersion,
         model: Schema.Schema,
-        idField: string,
-        processedEntries: ProcessedEntry[]
+        idField: string
     ): Promise<string | null> {
         let documentId: string | null = null;
 
         // First handle published versions if they exist
         if (entry.published) {
-            documentId = await this.importVersionData(contentType, entry.published, model, processedEntries, {
+            documentId = await this.importVersionData(contentType, entry.published, model, {
                 status: 'published',
                 idField
             });
-            
-            if (documentId) {
-                // Track this processed entry
-                processedEntries.push({
-                    contentType,
-                    idFieldValue: entry.published.default[idField],
-                    documentId
-                });
-            }
         }
 
         // Then handle draft versions if they exist
         if (entry.draft) {
-            documentId = await this.importVersionData(contentType, entry.draft, model, processedEntries, {
+            documentId = await this.importVersionData(contentType, entry.draft, model, {
                 documentId,
                 status: 'draft',
                 idField
@@ -87,7 +69,6 @@ export class ImportProcessor {
         contentType: UID.ContentType,
         versionData: LocaleVersions,
         model: Schema.Schema,
-        processedEntries: ProcessedEntry[],
         options: {
             documentId?: string | null;
             status: 'draft' | 'published';
@@ -108,7 +89,7 @@ export class ImportProcessor {
                 filters: { [options.idField]: firstData[options.idField] }
             });
 
-            const processedData = await this.processEntryData(firstData, model, processedEntries);
+            const processedData = await this.processEntryData(firstData, model);
 
             // Sanitize data just before create/update
             const sanitizedData = this.sanitizeData(processedData, model);
@@ -116,7 +97,7 @@ export class ImportProcessor {
             if (existing) {
                 switch (this.context.options.existingAction) {
                     case ExistingAction.Skip:
-                        if (!this.context.wasCreatedInThisImport(contentType, firstData[options.idField])) {
+                        if (!this.context.wasDocumentCreatedInThisImport(existing.documentId)) {
                             console.log(`Skipping existing entry with ${options.idField}=${firstData[options.idField]}`);
                             return existing.documentId;
                         }
@@ -145,7 +126,7 @@ export class ImportProcessor {
                             status: options.status
                         });
                         documentId = existing.documentId;
-                        this.context.recordUpdated(contentType, firstData[options.idField]);
+                        this.context.recordUpdated(contentType, firstData[options.idField], existing.documentId);
                         processedFirstLocale = true;
                         break;
 
@@ -164,7 +145,7 @@ export class ImportProcessor {
                     locale: firstLocale === 'default' ? undefined : firstLocale,
                 });
                 documentId = created.documentId;
-                this.context.recordCreated(contentType, firstData[options.idField]);
+                this.context.recordCreated(contentType, firstData[options.idField], created.documentId);
                 processedFirstLocale = true;
             }
         }
@@ -174,7 +155,51 @@ export class ImportProcessor {
             if (processedFirstLocale && locale === firstLocale) continue;
 
             const localeData = versionData[locale];
-            const processedLocale = await this.processEntryData(localeData, model, processedEntries);
+
+            // If we're in skip mode
+            if (this.context.options.existingAction === ExistingAction.Skip && documentId) {
+                if (!this.context.wasDocumentCreatedInThisImport(documentId)) {
+                    if (!this.context.options.allowLocaleUpdates) {
+                        console.log(`Skipping update for existing entry with documentId: ${documentId}`);
+                        continue;
+                    }
+
+                    // If we're allowing locale updates, check if this locale already exists
+                    const existingLocales = new Set<string>();
+
+                    // Get existing locales from both versions
+                    const [publishedVersion, draftVersion] = await Promise.all([
+                        this.services.documents(contentType).findOne({
+                            documentId,
+                            status: 'published'
+                        }),
+                        this.services.documents(contentType).findOne({
+                            documentId,
+                            status: 'draft'
+                        })
+                    ]);
+
+                    // Collect all existing locales
+                    [publishedVersion, draftVersion].forEach(version => {
+                        if (version) {
+                            existingLocales.add(version.locale || 'default');
+                            version.localizations?.forEach(loc => 
+                                existingLocales.add(loc.locale)
+                            );
+                        }
+                    });
+
+                    // If this locale already exists, skip it
+                    if (existingLocales.has(locale === 'default' ? 'default' : locale)) {
+                        console.log(`Skipping existing locale ${locale} for documentId: ${documentId}`);
+                        continue;
+                    }
+
+                    console.log(`Creating new locale ${locale} for existing entry with documentId: ${documentId}`);
+                }
+            }
+
+            const processedLocale = await this.processEntryData(localeData, model);
             const sanitizedLocaleData = this.sanitizeData(processedLocale, model);
 
             await this.services.documents(contentType).update({
@@ -190,99 +215,166 @@ export class ImportProcessor {
 
     private async processEntryData(
         data: any, 
-        model: Schema.Schema, 
-        processedEntries: ProcessedEntry[]
+        model: Schema.Schema
     ): Promise<any> {
-        const processed = { ...data };
+        try {
+            const processed = { ...data };
 
-        for (const [key, attr] of Object.entries(model.attributes)) {
-            if (!data[key]) continue;
+            for (const [key, attr] of Object.entries(model.attributes)) {
+                if (!data[key]) continue;
 
-            if (key === 'localizations') {
-                delete processed[key];
-                continue;
-            }
+                try {
+                    if (key === 'localizations') {
+                        delete processed[key];
+                        continue;
+                    }
 
-            if (isRelationAttribute(attr)) {
-                if (Array.isArray(data[key])) {
-                    const documentIds = await Promise.all(
-                        data[key].map(value => 
-                            this.processRelation(value, attr, processedEntries)
-                        )
+                    if (isRelationAttribute(attr)) {
+                        if (Array.isArray(data[key])) {
+                            const documentIds = await Promise.all(
+                                data[key].map(async (value) => {
+                                    try {
+                                        return await this.processRelation(value, attr);
+                                    } catch (error) {
+                                        console.error(`Failed to process relation array item`, error);
+                                        this.context.addFailure(
+                                            `Failed to process relation in ${key}: ${error.message}`,
+                                            { value, attribute: key }
+                                        );
+                                        return null;
+                                    }
+                                })
+                            );
+                            processed[key] = documentIds.filter(id => id !== null);
+                        } else {
+                            try {
+                                processed[key] = await this.processRelation(data[key], attr);
+                            } catch (error) {
+                                console.error(`Failed to process relation`, error);
+                                this.context.addFailure(
+                                    `Failed to process relation in ${key}: ${error.message}`,
+                                    { value: data[key], attribute: key }
+                                );
+                                processed[key] = null;
+                            }
+                        }
+                    } else if (isComponentAttribute(attr)) {
+                        try {
+                            processed[key] = await this.processComponent(data[key], attr);
+                        } catch (error) {
+                            console.error(`Failed to process component`, error);
+                            this.context.addFailure(
+                                `Failed to process component in ${key}: ${error.message}`,
+                                { value: data[key], attribute: key }
+                            );
+                            processed[key] = null;
+                        }
+                    } else if (isDynamicZoneAttribute(attr)) {
+                        processed[key] = await this.processDynamicZone(
+                            data[key]
+                        );
+                    } else if (isMediaAttribute(attr)) {
+                        const allowedTypes = (attr as Schema.Attribute.Media).allowedTypes || ['any'];
+                        processed[key] = await this.processMedia(data[key], allowedTypes);
+                    }
+                } catch (error) {
+                    console.error(`Failed to process attribute ${key}`, error);
+                    this.context.addFailure(
+                        `Failed to process attribute ${key}: ${error.message}`,
+                        { value: data[key], attribute: key }
                     );
-                    processed[key] = documentIds.filter(id => id !== null);
-                } else {
-                    processed[key] = await this.processRelation(data[key], attr, processedEntries);
+                    processed[key] = null;
                 }
-            } else if (isComponentAttribute(attr)) {
-                processed[key] = await this.processComponent(data[key], attr, processedEntries);
-            } else if (isDynamicZoneAttribute(attr)) {
-                processed[key] = await this.processDynamicZone(data[key], processedEntries);
-            } else if (isMediaAttribute(attr)) {
-                const allowedTypes = (attr as Schema.Attribute.Media).allowedTypes || ['any'];
-                processed[key] = await this.processMedia(data[key], allowedTypes);
             }
+            return processed;
+        } catch (error) {
+            console.error(`Failed to process entry data`, error);
+            this.context.addFailure(
+                `Failed to process entry data: ${error.message}`,
+                data
+            );
+            throw error; // Re-throw to be caught by processEntry
         }
-
-        return processed;
     }
 
     private async processRelation(
         relationValue: any,
-        attr: Schema.Attribute.RelationWithTarget,
-        processedEntries: ProcessedEntry[]
+        attr: Schema.Attribute.RelationWithTarget
     ): Promise<string | null> {
-        const targetModel = getModel(attr.target);
-        const targetIdField = getIdentifierField(targetModel);
-
-        // Check if this relation has already been processed
-        const processed = processedEntries.find(entry => 
-            entry.contentType === attr.target && 
-            entry.idFieldValue === relationValue
-        );
-        
-        if (processed) {
-            return processed.documentId;
+        if (!relationValue) {
+            return null;
         }
 
-        // Look for the target in import data first
-        if (this.context.importData[attr.target]) {
-            const targetEntry = this.findEntryInImportData(
-                relationValue,
-                targetIdField,
-                this.context.importData[attr.target]
-            );
+        try {
+            const targetModel = getModel(attr.target);
+            if (!targetModel) {
+                throw new Error(`Target model ${attr.target} not found`);
+            }
 
-            if (targetEntry) {
-                // If we found an entry, check if it has both draft and published versions
-                const publishedIdValue = targetEntry.published?.default?.[targetIdField];
-                const draftIdValue = targetEntry.draft?.default?.[targetIdField];
+            const targetIdField = getIdentifierField(targetModel);
 
-                if (publishedIdValue && draftIdValue && publishedIdValue !== draftIdValue) {
-                    // If the values are different, we need to look up the published version in the database
-                    const dbRecord = await this.findInDatabase(publishedIdValue, targetModel, targetIdField);
-                    if (dbRecord) {
-                        return dbRecord.documentId;
+            // Check if this relation has already been processed
+            const documentId = this.context.findProcessedRecord(attr.target, relationValue);
+            if (documentId) {
+                return documentId;
+            }
+
+            // Look for the target in import data first
+            if (this.context.importData[attr.target]) {
+                const targetEntry = this.findEntryInImportData(
+                    relationValue,
+                    targetIdField,
+                    this.context.importData[attr.target]
+                );
+
+                if (targetEntry) {
+                    // If we found an entry, check if it has both draft and published versions
+                    const publishedIdValue = targetEntry.published?.default?.[targetIdField];
+                    const draftIdValue = targetEntry.draft?.default?.[targetIdField];
+
+                    if (publishedIdValue && draftIdValue && publishedIdValue !== draftIdValue) {
+                        // If disallowNewRelations is true, skip database lookup
+                        if (this.context.options.disallowNewRelations) {
+                            console.log(`Skipping database lookup for relation ${attr.target}:${publishedIdValue} (disallowNewRelations is true)`);
+                            return null;
+                        }
+                        // If the values are different, we need to look up the published version in the database
+                        const dbRecord = await this.findInDatabase(publishedIdValue, targetModel, targetIdField);
+                        if (dbRecord) {
+                            return dbRecord.documentId;
+                        }
+                    }
+
+                    // Process the entry if it's a oneWay/manyWay relation
+                    if (attr.relation === 'oneWay' || attr.relation === 'manyWay') {
+                        console.log(`Processing related entry from import data: ${attr.target} ${relationValue}`);
+                        return await this.processEntry(
+                            attr.target,
+                            targetEntry,
+                            targetModel,
+                            targetIdField
+                        );
                     }
                 }
-
-                // Process the entry if it's a oneWay/manyWay relation
-                if (attr.relation === 'oneWay' || attr.relation === 'manyWay') {
-                    console.log(`Processing related entry from import data: ${attr.target} ${relationValue}`);
-                    return await this.processEntry(
-                        attr.target,
-                        targetEntry,
-                        targetModel,
-                        targetIdField,
-                        processedEntries
-                    );
-                }
             }
-        }
 
-        // If not found in import data or not processable, look in database
-        const dbRecord = await this.findInDatabase(relationValue, targetModel, targetIdField);
-        return dbRecord?.documentId || null;
+            // If disallowNewRelations is true, skip database lookup
+            if (this.context.options.disallowNewRelations) {
+                console.log(`Skipping database lookup for relation ${attr.target}:${relationValue} (disallowNewRelations is true)`);
+                return null;
+            }
+
+            // If not found in import data or not processable, look in database
+            const dbRecord = await this.findInDatabase(relationValue, targetModel, targetIdField);
+            return dbRecord?.documentId || null;
+        } catch (error) {
+            console.error(`Failed to process relation`, error);
+            this.context.addFailure(
+                `Failed to process relation to ${attr.target}: ${error.message}`,
+                { value: relationValue, attribute: attr }
+            );
+            return null;
+        }
     }
 
     private async findInDatabase(
@@ -314,23 +406,21 @@ export class ImportProcessor {
 
     private async processComponent(
         value: any, 
-        attr: Schema.Attribute.Component,
-        processedEntries: ProcessedEntry[]
+        attr: Schema.Attribute.Component
     ): Promise<any> {
         if (Array.isArray(value)) {
             return Promise.all(
                 value.map(item => 
-                    this.processComponentItem(item, attr.component, processedEntries)
+                    this.processComponentItem(item, attr.component)
                 )
             );
         }
-        return this.processComponentItem(value, attr.component, processedEntries);
+        return this.processComponentItem(value, attr.component);
     }
 
     private async processComponentItem(
         item: any,
-        componentType: string,
-        processedEntries: ProcessedEntry[]
+        componentType: string
     ): Promise<any> {
         const processed = { ...item };
         const componentModel = getModel(componentType);
@@ -344,8 +434,7 @@ export class ImportProcessor {
             } else if (isRelationAttribute(attr)) {
                 processed[key] = await this.processRelation(
                     item[key],
-                    attr,
-                    processedEntries
+                    attr
                 );
             }
         }
@@ -354,16 +443,14 @@ export class ImportProcessor {
     }
 
     private async processDynamicZone(
-        items: any[],
-        processedEntries: ProcessedEntry[]
+        items: any[]
     ): Promise<any[]> {
         return Promise.all(
             items.map(async item => ({
                 __component: item.__component,
                 ...(await this.processComponentItem(
                     item,
-                    item.__component,
-                    processedEntries
+                    item.__component
                 ))
             }))
         );

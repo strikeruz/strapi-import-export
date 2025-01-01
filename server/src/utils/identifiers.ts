@@ -6,10 +6,10 @@ export function attributeIsUnique(attribute: Schema.Attribute.AnyAttribute): att
 
 export function getIdentifierField(model: Schema.Schema): string {
     console.log('getIdentifierField for model:', model.uid);
-
     // Check for configured idField in plugin options
-    if (model.pluginOptions?.['import-export-entries']?.idField) {
-        const configuredField = model.pluginOptions['import-export-entries'].idField;
+    const importExportOptions = model.pluginOptions?.['import-export-entries'] as { idField?: string } | undefined;
+    if (importExportOptions?.idField) {
+        const configuredField = importExportOptions.idField;
         console.log('Using configured idField:', configuredField);
 
         // Validate the configured field exists and is properly set up

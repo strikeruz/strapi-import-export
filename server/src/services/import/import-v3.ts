@@ -3,6 +3,8 @@ import { getIdentifierField } from '../export/export-v3';
 import { findOrImportFile } from './utils/file';
 import { Struct, Schema, UID } from '@strapi/types';
 import { FileContent, validateFileContent } from './validation';
+import { ImportContext } from './utils/import-context';
+import { ImportProcessor } from './utils/import-processor';
 
 export enum ExistingAction {
     Warn = 'warn',
@@ -16,24 +18,26 @@ interface ImportOptions {
     allowDraftOnPublished?: boolean;
     existingAction?: ExistingAction;
     ignoreMissingRelations?: boolean;
+    allowLocaleUpdates?: boolean;
+    disallowNewRelations?: boolean;
 }
 
-interface ImportFailure {
-  error: string;
-  data: any;
+export interface ImportFailure {
+    error: string;
+    data: any;
 }
 
-interface ImportError {
-  error: string;
-  data: {
-    entry: any;
-    path: string;
-  };
+export interface ImportError {
+    error: string;
+    data: {
+        entry: any;
+        path: string;
+    };
 }
 
-interface ImportResult {
-  failures?: ImportFailure[];
-  errors?: ImportError[];
+export interface ImportResult {
+    failures?: ImportFailure[];
+    errors?: ImportError[];
 }
 
 export interface LocaleVersions {
@@ -237,64 +241,58 @@ async function importVersionData(
 }
 
 async function importDataV3(fileContent: FileContent, { 
-  slug, 
-  user,
-  allowDraftOnPublished = true,
-  existingAction = ExistingAction.Warn,
-  ignoreMissingRelations = false
+    slug, 
+    user,
+    allowDraftOnPublished = true,
+    existingAction = ExistingAction.Warn,
+    ignoreMissingRelations = false,
+    allowLocaleUpdates = false,
+    disallowNewRelations = true
 }: ImportOptions): Promise<ImportResult> {
-  // validate file content
-  if (!fileContent.data) {
-    console.log('No data found in file');
-    throw new Error('No data found in file');
-  }
+    // validate file content
+    if (!fileContent.data) {
+        console.log('No data found in file');
+        throw new Error('No data found in file');
+    }
 
-  const validationResult = await validateFileContent(fileContent, { 
-    existingAction,
-    ignoreMissingRelations 
-  });
-  if (!validationResult.isValid) {
-    return {
-      errors: validationResult.errors.map(error => {
-        console.log('Validation failed', JSON.stringify(error, null, 2));
+    const validationResult = await validateFileContent(fileContent, { 
+        existingAction,
+        ignoreMissingRelations 
+    });
+    if (!validationResult.isValid) {
         return {
-          error: error.message,
-          data: {
-            entry: error.entry,
-            path: error.path ? error.path.join('.') : undefined
-          }
-        }
-      })
-    };
-  }
-  
-  const { data } = fileContent;
-  const failures: ImportFailure[] = [];
-  // Track processed entries across all content types
-  const processedEntries: ProcessedEntry[] = [];
-
-  for (const [contentType, entries] of Object.entries(data) as [UID.ContentType, EntryVersion[]][]) {
-    const model = getModel(contentType);
-    if (!model) {
-      console.warn(`Model ${contentType} not found, skipping`);
-      failures.push({ error: `Model ${contentType} not found`, data: contentType });
-      continue;
+            errors: validationResult.errors.map(error => {
+                console.log('Validation failed', JSON.stringify(error, null, 2));
+                return {
+                    error: error.message,
+                    data: {
+                        entry: error.entry,
+                        path: error.path ? error.path.join('.') : undefined
+                    }
+                }
+            })
+        };
     }
 
-    const idField = getIdentifierField(model);
+    // Create context and processor
+    const context = new ImportContext(
+        {
+            existingAction,
+            allowDraftOnPublished,
+            ignoreMissingRelations,
+            allowLocaleUpdates,
+            disallowNewRelations
+        },
+        fileContent.data,
+        user
+    );
 
-    // Import each entry's versions
-    for (const entry of entries) {
-      try {
-        processEntry(contentType, entry, model, idField, user, allowDraftOnPublished, existingAction, processedEntries, failures, data);
-      } catch (error) {
-        console.error(`Failed to import entry`, error);
-        failures.push({ error, data: entry });
-      }
-    }
-  }
+    const processor = new ImportProcessor(context, {
+        documents: strapi.documents
+    });
 
-  return { failures };
+    // Process the import
+    return processor.process();
 }
 
 async function processEntry(
