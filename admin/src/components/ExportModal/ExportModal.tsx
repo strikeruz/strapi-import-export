@@ -26,6 +26,9 @@ export interface ExportOptions {
     deepness: number;
     exportPluginsContentTypes: boolean;
     exportAllLocales: boolean;
+    exportRelations: boolean;
+    deepPopulateRelations: boolean;
+    deepPopulateComponentRelations: boolean;
 }
 
 export interface ExportModalProps {
@@ -41,6 +44,9 @@ const DEFAULT_OPTIONS = {
     deepness: 5,
     exportPluginsContentTypes: false,
     exportAllLocales: false,
+    exportRelations: false,
+    deepPopulateRelations: false,
+    deepPopulateComponentRelations: false,
 };
 
 const isFetchError = (err: unknown): err is FetchError => {
@@ -90,6 +96,9 @@ export const useExportModal = ({
                     exportPluginsContentTypes: options.exportPluginsContentTypes,
                     documentIds: documentIds ?? undefined,
                     exportAllLocales: options.exportAllLocales,
+                    exportRelations: options.exportRelations,
+                    deepPopulateRelations: options.deepPopulateRelations,
+                    deepPopulateComponentRelations: options.deepPopulateComponentRelations
                 }
             });
             setData(res.data);
@@ -262,6 +271,30 @@ export const ExportModalContent: React.FC<{ state: ReturnType<typeof useExportMo
                         >
                             {i18n('plugin.export.export-all-locales')}
                         </Checkbox>
+                    )}
+                    {state.shouldShowOption('exportRelations') && (
+                        <Checkbox 
+                            checked={state.options.exportRelations} 
+                            onCheckedChange={(value) => state.handleSetOption('exportRelations', value==true)}
+                        >
+                            {i18n('plugin.export.export-relations')}
+                        </Checkbox>
+                    )}
+                    {state.shouldShowOption('exportRelations') && state.options.exportRelations && (
+                        <Flex gap={2}>
+                            <Checkbox 
+                                checked={state.options.deepPopulateRelations} 
+                                onCheckedChange={(value) => state.handleSetOption('deepPopulateRelations', value==true)}
+                            >
+                                {i18n('plugin.export.deep-populate-relations')}
+                            </Checkbox>
+                            <Checkbox 
+                                checked={state.options.deepPopulateComponentRelations} 
+                                onCheckedChange={(value) => state.handleSetOption('deepPopulateComponentRelations', value==true)}
+                            >
+                                {i18n('plugin.export.deep-populate-component-relations')}
+                            </Checkbox>
+                        </Flex>
                     )}
                     {state.shouldShowDeepnessOption() && (
                         <>

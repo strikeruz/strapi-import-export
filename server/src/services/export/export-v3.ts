@@ -5,6 +5,10 @@ import { getConfig } from '../../utils/getConfig.js';
 
 import { Struct, Schema, UID } from '@strapi/types';
 
+type Relation = {
+  [slug in UID.ContentType]: string[]
+}
+
 /**
  * 
  * Get the identifier field for a model, falling back through uid -> name -> title -> id
@@ -35,7 +39,7 @@ const computeUrl = (relativeUrl) => {
 /**
  * Recursively process any data object according to its schema
  */
-function processDataWithSchema(data, schema: Schema.Schema, options = { processLocalizations: true }) {
+function processDataWithSchema(data, schema: Schema.Schema, relations: Relation, alreadyProcessed: Relation, options = { processLocalizations: true, skipRelations: false, skipComponentRelations: false }) {
   console.log(`Processing data for schema: ${schema.uid}`);
   console.log('Raw data:', JSON.stringify(data, null, 2));
   if (!data) return null;
@@ -48,8 +52,7 @@ function processDataWithSchema(data, schema: Schema.Schema, options = { processL
   // if (idField !== 'id') {
     delete processed.id;
   // }
-  
-  
+
   delete processed.documentId;
 
   delete processed.createdBy; // TODO: we can't import data as a different user, so lets not export it
@@ -74,7 +77,7 @@ function processDataWithSchema(data, schema: Schema.Schema, options = { processL
       console.log('Processing localizations');
       processed[key] = data[key]?.map(localization => 
         // Process each localization but prevent recursive localization processing
-        ({...(processDataWithSchema(localization, schema, { processLocalizations: false })), documentId: localization.documentId})
+        ({...(processDataWithSchema(localization, schema, relations, alreadyProcessed, { processLocalizations: false, skipRelations: options.skipRelations, skipComponentRelations: options.skipComponentRelations })), documentId: localization.documentId})
       ) || [];
       continue;
     }
@@ -84,13 +87,29 @@ function processDataWithSchema(data, schema: Schema.Schema, options = { processL
       const relatedIdField = getIdentifierField(relatedModel);
       console.log(`Relation ${key} uses identifier field ${relatedIdField}`);
       
-      if (attr.relation.endsWith('Many')) {
+      if (attr.relation.endsWith('Many') || attr.relation === 'manyWay') {
         processed[key] = data[key]?.map(item => {
           console.log('Processing relation item:', item);
+          // check if item.documentID is not in alreadyProcessed[relatedModel.uid] or relations[relatedModel.uid]
+          if (!options.skipRelations && !alreadyProcessed[relatedModel.uid]?.includes(item.documentId) && !relations[relatedModel.uid]?.includes(item.documentId)) {
+            // add the document to relations[relatedModel.uid]
+            if (!relations[relatedModel.uid]) {
+              relations[relatedModel.uid] = [];
+            }
+            relations[relatedModel.uid].push(item.documentId);
+          }
           return item[relatedIdField];
         }) || [];
       } else {
         console.log('Processing single relation:', data[key]);
+        // check if item.documentID is not in alreadyProcessed[relatedModel.uid] or relations[relatedModel.uid]
+        if (!options.skipRelations && !alreadyProcessed[relatedModel.uid]?.includes(data[key].documentId) && !relations[relatedModel.uid]?.includes(data[key].documentId)) {
+          // add the document to relations[relatedModel.uid]
+          if (!relations[relatedModel.uid]) {
+            relations[relatedModel.uid] = [];
+          }
+          relations[relatedModel.uid].push(data[key].documentId);
+        }
         processed[key] = data[key]?.[relatedIdField] || null;
       }
     } else if (isComponentAttribute(attr)) {
@@ -99,10 +118,10 @@ function processDataWithSchema(data, schema: Schema.Schema, options = { processL
       
       if (attr.repeatable) {
         processed[key] = data[key]?.map(item => 
-          processDataWithSchema(item, componentModel)
+          processDataWithSchema(item, componentModel, relations, alreadyProcessed, { processLocalizations: options.processLocalizations, skipRelations: options.skipComponentRelations, skipComponentRelations: options.skipComponentRelations })
         ) || [];
       } else {
-        processed[key] = processDataWithSchema(data[key], componentModel);
+        processed[key] = processDataWithSchema(data[key], componentModel, relations, alreadyProcessed, { processLocalizations: options.processLocalizations, skipRelations: options.skipComponentRelations, skipComponentRelations: options.skipComponentRelations });
       }
     } else if (isDynamicZoneAttribute(attr)) {
       console.log(`Processing dynamic zone ${key}`);
@@ -110,7 +129,7 @@ function processDataWithSchema(data, schema: Schema.Schema, options = { processL
         const componentModel = getModel(item.__component);
         return {
           __component: item.__component,
-          ...processDataWithSchema(item, componentModel)
+          ...processDataWithSchema(item, componentModel, relations, alreadyProcessed, { processLocalizations: options.processLocalizations, skipRelations: options.skipComponentRelations, skipComponentRelations: options.skipComponentRelations })
         };
       }) || [];
     } else if (isMediaAttribute(attr)) {
@@ -147,7 +166,7 @@ function processDataWithSchema(data, schema: Schema.Schema, options = { processL
 /**
  * Group entry data by locale, comparing with published version to only include changed drafts
  */
-function groupByLocale(entry, publishedEntry, model, exportAllLocales = true) {
+function groupByLocale(entry, publishedEntry, model, alreadyProcessed, relations, exportAllLocales = true, skipRelations = false, skipComponentRelations = false) {
   const result: {
     draft?: Record<string, any>;
     published?: Record<string, any>;
@@ -160,7 +179,7 @@ function groupByLocale(entry, publishedEntry, model, exportAllLocales = true) {
 
   // Always remove localizations from the processed data
   const processEntry = (data) => {
-    const processed = processDataWithSchema(data, model, { processLocalizations: true });
+    const processed = processDataWithSchema(data, model, relations, alreadyProcessed, { processLocalizations: true, skipRelations, skipComponentRelations });
     delete processed.localizations;
     return processed;
   };
@@ -253,16 +272,110 @@ function validateIdField(model) {
   return idField;
 }
 
-/**
- * Export data using v3 format
- */
+async function exportSchema(
+  currentSlug: string,
+  exportedData: Record<string, any>,
+  relations: Relation,
+  alreadyProcessed: Relation,
+  options: {
+    documentIds?: string[];
+    applySearch: boolean;
+    search: any;
+    exportAllLocales: boolean;
+    exportRelations: boolean;
+    skipRelations: boolean;
+    skipComponentRelations: boolean;
+  }
+) {
+  console.log(`\nProcessing slug: ${currentSlug}`);
+  const model = getModel(currentSlug);
+  if (!model || model.uid === 'admin::user') {
+    console.log('Skipping model:', currentSlug);
+    return;
+  }
+
+  // Validate idField configuration
+  validateIdField(model);
+
+  // Build populate object for relations and components
+  const populate = buildPopulateForModel(currentSlug);
+  console.log('Using populate:', JSON.stringify(populate, null, 2));
+
+  const documentIdFilter = options.documentIds?.length ? {
+    documentId: { $in: options.documentIds }
+  } : {};
+
+  const searchParams = options.applySearch && options.search ? (
+    typeof options.search === 'string' ? JSON.parse(options.search) : options.search
+  ) : {};
+
+  const filtersAndDocs = {
+    filters: {
+      ...searchParams.filters,
+      ...documentIdFilter
+    },
+    ...(options.applySearch && searchParams.sort && { sort: searchParams.sort })
+  };
+
+  // First get all draft versions
+  const draftEntries = await strapi.documents(currentSlug as UID.ContentType).findMany({
+    populate: {
+      ...populate,
+      localizations: {
+        populate: populate
+      }
+    },
+    status: 'draft',
+    ...filtersAndDocs
+  });
+
+  console.log(`Found ${draftEntries.length} draft entries`);
+
+  exportedData[currentSlug] = [];
+
+  // Process each draft entry and its corresponding published version
+  for (const draftEntry of draftEntries) {
+    console.log(`\nProcessing entry ${draftEntry.id}`);
+    
+    // Get the published version using the same documentId
+    const publishedEntry = await strapi.documents(currentSlug as UID.ContentType).findOne({
+      documentId: draftEntry.documentId,
+      status: 'published',
+      populate: {
+        ...populate,
+        ...(options.exportAllLocales && { 
+          localizations: {
+            populate: populate
+          }
+        })
+      }
+    });
+
+    const versions = groupByLocale(draftEntry, publishedEntry, model, alreadyProcessed, relations, options.exportAllLocales, options.skipRelations, options.skipComponentRelations);
+    
+    // Only add the entry if there are actual differences
+    if (versions.draft || versions.published) {
+      exportedData[currentSlug].push(versions);
+      
+      if (!alreadyProcessed[currentSlug]) {
+        alreadyProcessed[currentSlug] = [];
+      }
+      alreadyProcessed[currentSlug].push(draftEntry.documentId);
+    }
+  }
+}
+
 async function exportDataV3({
   slug,
   search,
   applySearch,
   exportPluginsContentTypes,
   documentIds,
-  exportAllLocales = true // Add new flag with default false for backward compatibility
+  maxDepth = 20,
+  exportAllLocales = true,
+  exportRelations = false,
+  deepPopulateRelations = false,
+  deepPopulateComponentRelations = false
 }) {
   console.log('exportDataV3 called with:', { slug, search, applySearch, exportPluginsContentTypes, documentIds });
   
@@ -274,89 +387,67 @@ async function exportDataV3({
   console.log('Slugs to export:', slugsToExport);
 
   const exportedData = {};
+  let currentRelations: Relation = {};
+  let alreadyProcessed: Relation = {};
   
   for (const currentSlug of slugsToExport) {
-    console.log(`\nProcessing slug: ${currentSlug}`);
-    const model = getModel(currentSlug);
-    if (!model || model.uid === 'admin::user') {
-      console.log('Skipping model:', currentSlug);
-      continue;
+    await exportSchema(currentSlug, exportedData, currentRelations, alreadyProcessed, {
+      documentIds,
+      applySearch,
+      search,
+      exportAllLocales,
+      exportRelations,
+      skipRelations: false,
+      skipComponentRelations: false
+    });
+  }
+
+  delete exportedData['admin::user'];
+
+  const processedRelations = {};
+
+  let loopCount = 0;
+  while (Object.keys(currentRelations).length > 0 && exportRelations && loopCount < maxDepth) {
+    loopCount++;
+    const nextRelations = {};
+    for (const [key, value] of Object.entries(currentRelations)) {
+      await exportSchema(key, exportedData, nextRelations, alreadyProcessed, {
+        documentIds: value,
+        applySearch: false,
+        search: {},
+        exportAllLocales,
+        exportRelations,
+        skipRelations: !deepPopulateRelations,
+        skipComponentRelations: !deepPopulateComponentRelations
+      });
     }
 
-
-    // Validate idField configuration
-    validateIdField(model);
-
-
-
-
-    // Build populate object for relations and components
-    const populate = buildPopulateForModel(currentSlug);
-    console.log('Using populate:', JSON.stringify(populate, null, 2));
-
-    const documentIdFilter = documentIds?.length ? {
-      documentId: { $in: documentIds }
-    } : {};
-  
-    const searchParams = applySearch && search ? (
-      typeof search === 'string' ? JSON.parse(search) : search
-    ) : {};
-  
-    const filtersAndDocs = {
-      filters: {
-        ...searchParams.filters,
-        ...documentIdFilter
-      },
-      ...(applySearch && searchParams.sort && { sort: searchParams.sort })
-    };
-
-    // First get all draft versions
-    const draftEntries = await strapi.documents(currentSlug).findMany({
-      populate: {
-        ...populate,
-        localizations: {
-          populate: populate
+    processedRelations[loopCount] = currentRelations;
+    // remove any ids in nextRelations that are already in currentRelations, since they've already been processed
+    // also delete 'admin::user' from nextRelations
+    // then set currentRelations to nextRelations
+    currentRelations = Object.fromEntries(
+      Object.entries(nextRelations).filter(([key, value]) => {
+        // Ensure both arrays exist before comparing
+        const currentValues = currentRelations[key] || [];
+        // Check if any values in nextRelations are not in currentRelations
+        if (key === 'admin::user') {
+          return false;
         }
-      },
-      status: 'draft',
-      ...filtersAndDocs
-    });
-    
-    console.log(`Found ${draftEntries.length} draft entries`);
-    
-    exportedData[currentSlug] = [];
+        return Array.isArray(value) && value.some(id => !currentValues.includes(id));
+      }).map(([key, value]) => [key, Array.isArray(value) ? value : []])
+    ) as Relation;
 
-    // Process each draft entry and its corresponding published version
-    for (const draftEntry of draftEntries) {
-      console.log(`\nProcessing entry ${draftEntry.id}`);
-      
-      // Get the published version using the same documentId
-      const publishedEntry = await strapi.documents(currentSlug).findOne({
-        documentId: draftEntry.documentId,
-        status: 'published',
-        populate: {
-          ...populate,
-          ...(exportAllLocales && { // Only include localizations if we're exporting all locales
-            localizations: {
-              populate: populate
-            }
-          })
-        }
-      });
-
-      const versions = groupByLocale(draftEntry, publishedEntry, model, exportAllLocales);
-      
-      // Only add the entry if there are actual differences
-      if (versions.draft || versions.published) {
-        exportedData[currentSlug].push(versions);
-      }
+    if (loopCount === maxDepth) {
+      console.warn(`Export relations loop limit reached (${maxDepth} iterations). Some relations may not be fully exported.`);
     }
   }
 
-  console.log('Export complete');
   return JSON.stringify({
     version: 3,
-    data: exportedData
+    data: exportedData,
+    relations: processedRelations,
+    alreadyProcessed: alreadyProcessed
   }, null, '\t');
 }
 

@@ -1,7 +1,7 @@
 import { Schema, UID } from '@strapi/types';
 import { getModel, isComponentAttribute, isDynamicZoneAttribute, isRelationAttribute } from '../../utils/models';
 import { getIdentifierField } from '../export/export-v3';
-import { EntryVersion, LocaleVersions } from './import-v3';
+import { EntryVersion, LocaleVersions, ExistingAction } from './import-v3';
 
 interface ValidationError {
     message: string;
@@ -25,7 +25,10 @@ function createValidationError(message: string, path?: string[], entry?: any): V
 
 async function validateFileContent(
     fileContent: FileContent,
-    options: { updateExisting?: boolean, ignoreMissingRelations?: boolean } = {}
+    options: { 
+        existingAction?: ExistingAction,
+        ignoreMissingRelations?: boolean 
+    } = {}
 ): Promise<ValidationResult> {
     if (!fileContent.version || fileContent.version !== 3) {
         return {
@@ -42,7 +45,7 @@ async function validateFileContent(
     }
 
     const errors: ValidationError[] = [];
-    await validateContentTypes(fileContent.data, errors, options.updateExisting, options.ignoreMissingRelations, fileContent.data);
+    await validateContentTypes(fileContent.data, errors, options.existingAction, options.ignoreMissingRelations, fileContent.data);
 
     return {
         isValid: errors.length === 0,
@@ -53,7 +56,7 @@ async function validateFileContent(
 async function validateContentTypes(
     data: Record<UID.ContentType, EntryVersion[]>,
     errors: ValidationError[],
-    updateExisting?: boolean,
+    existingAction?: ExistingAction,
     ignoreMissingRelations?: boolean,
     importData?: Record<UID.ContentType, EntryVersion[]>
 ): Promise<void> {
@@ -66,7 +69,7 @@ async function validateContentTypes(
 
         try {
             validateModelConfiguration(model);
-            await validateContentTypeEntries(contentType as UID.ContentType, entries, errors, updateExisting, ignoreMissingRelations, importData);
+            await validateContentTypeEntries(contentType as UID.ContentType, entries, errors, existingAction, ignoreMissingRelations, importData);
         } catch (error) {
             errors.push(createValidationError(
                 `Validation failed for ${contentType}: ${error.message}`,
@@ -80,7 +83,7 @@ async function validateContentTypeEntries(
     contentType: UID.ContentType,
     entries: EntryVersion[],
     errors: ValidationError[],
-    updateExisting?: boolean,
+    existingAction?: ExistingAction,
     ignoreMissingRelations?: boolean,
     importData?: Record<UID.ContentType, EntryVersion[]>
 ): Promise<void> {
@@ -100,7 +103,7 @@ async function validateContentTypeEntries(
                     
                     // Constraint validation
                     if (version === 'published') {
-                        await validateConstraints(data, model, path, errors, updateExisting);
+                        await validateConstraints(data, model, path, errors, existingAction);
                     }
                 }
             }
@@ -273,53 +276,59 @@ async function validateRelation(
     const targetModel = getModel(attr.target);
     const targetIdField = getIdentifierField(targetModel);
 
-    async function checkRelationExists(id: any): Promise<boolean> {
-        // First check database
-        const exists = await strapi.documents(attr.target).findFirst({
-            filters: { [targetIdField]: id }
+    async function checkRelationExists(id: any): Promise<void> {
+        const publishedVersion = await strapi.documents(attr.target).findFirst({
+            filters: { [targetIdField]: id },
+            status: 'published'
         });
-        if (exists) return true;
 
-        // Then check import data
-        if (importData) {
-            const targetEntries = importData[attr.target] || [];
-            const targetExists = targetEntries.some(entry => {
-                // Check published version in all locales
-                if (entry.published) {
-                    return Object.values(entry.published).some(localeData => 
-                        localeData[targetIdField] === id
-                    );
-                }
-                return false;
-            });
-            if (targetExists) return true;
+        const draftVersion = await strapi.documents(attr.target).findFirst({
+            filters: { [targetIdField]: id },
+            status: 'draft'
+        });
+
+        if (publishedVersion && draftVersion && 
+            publishedVersion.documentId !== draftVersion.documentId) {
+            errors.push(createValidationError(
+                `Found conflicting published and draft versions for relation ${attr.target} with ${targetIdField}='${id}'`,
+                [...path, attrName],
+                value
+            ));
+            return;
         }
 
-        return false;
-    }
-
-    if (Array.isArray(value)) {
-        await Promise.all(value.map(async (id) => {
-            if (id === null || id === undefined) return;
-            
-            const exists = await checkRelationExists(id);
-            if (!exists) {
-                errors.push(createValidationError(
-                    `Related entity with ${targetIdField}='${id}' not found in ${attr.target} (checked both database and import data)`,
-                    [...path, attrName],
-                    value
-                ));
-            }
-        }));
-    } else {
-        const exists = await checkRelationExists(value);
-        if (!exists) {
+        const exists = publishedVersion || draftVersion;
+        if (!exists && (!importData || !checkImportData(id))) {
             errors.push(createValidationError(
-                `Related entity with ${targetIdField}='${value}' not found in ${attr.target} (checked both database and import data)`,
+                `Related entity with ${targetIdField}='${id}' not found in ${attr.target} (checked both published and draft)`,
                 [...path, attrName],
                 value
             ));
         }
+    }
+
+    function checkImportData(id: any): boolean {
+        const targetEntries = importData[attr.target] || [];
+        return targetEntries.some(entry => {
+            if (entry.published) {
+                const publishedMatch = Object.values(entry.published).some(
+                    localeData => localeData[targetIdField] === id
+                );
+                if (publishedMatch) return true;
+            }
+            if (entry.draft) {
+                return Object.values(entry.draft).some(
+                    localeData => localeData[targetIdField] === id
+                );
+            }
+            return false;
+        });
+    }
+
+    if (Array.isArray(value)) {
+        await Promise.all(value.map(id => checkRelationExists(id)));
+    } else {
+        await checkRelationExists(value);
     }
 }
 
@@ -394,9 +403,14 @@ async function validateConstraints(
     model: Schema.Schema,
     path: string[],
     errors: ValidationError[],
-    updateExisting?: boolean
+    existingAction?: ExistingAction
 ): Promise<void> {
-    await validateUniqueFields(model.uid as UID.ContentType, [{ published: { default: data } }], errors, updateExisting);
+    await validateUniqueFields(
+        model.uid as UID.ContentType, 
+        [{ published: { default: data } }], 
+        errors, 
+        existingAction
+    );
 }
 
 function attributeIsUnique(attribute: Schema.Attribute.AnyAttribute): attribute is Schema.Attribute.AnyAttribute & Schema.Attribute.UniqueOption {
@@ -587,7 +601,7 @@ async function validateUniqueFields(
     contentType: UID.ContentType,
     entries: EntryVersion[],
     errors: ValidationError[],
-    updateExisting: boolean = false
+    existingAction: ExistingAction = ExistingAction.Warn
 ) {
     const model = getModel(contentType);
     const uniqueAttributes = Object.entries(model.attributes)
@@ -624,18 +638,34 @@ async function validateUniqueFields(
                 });
 
                 if (existing) {
-                    console.log('Existing record:', updateExisting, existing[idField], data[idField]);
-                    // If we're allowing updates and this is the same record (matching idField), it's okay
-                    if (updateExisting && existing[idField] === data[idField]) {
-                        console.log(`Found existing record with ${attrName}=${value}, but matches idField=${data[idField]} - allowing update`);
-                        continue;
-                    }
+                    console.log('Existing record:', existingAction, existing[idField], data[idField]);
+                    
+                    if (existing[idField] === data[idField]) {
+                        switch (existingAction) {
+                            case ExistingAction.Skip:
+                                console.log(`Found existing record with ${attrName}=${value}, will skip during import`);
+                                continue;
 
-                    errors.push({
-                        message: `Value '${value}' for unique field '${attrName}' already exists in database`,
-                        path: ['published', locale, attrName],
-                        entry: data
-                    });
+                            case ExistingAction.Update:
+                                console.log(`Found existing record with ${attrName}=${value}, will update during import`);
+                                continue;
+
+                            case ExistingAction.Warn:
+                            default:
+                                errors.push({
+                                    message: `Value '${value}' for unique field '${attrName}' already exists in database`,
+                                    path: ['published', locale, attrName],
+                                    entry: data
+                                });
+                        }
+                    } else {
+                        // If it's a different record with the same unique value, always error
+                        errors.push({
+                            message: `Value '${value}' for unique field '${attrName}' already exists in database on a different record`,
+                            path: ['published', locale, attrName],
+                            entry: data
+                        });
+                    }
                 }
             }
         }

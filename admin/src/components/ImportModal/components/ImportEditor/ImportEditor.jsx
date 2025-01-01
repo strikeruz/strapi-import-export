@@ -14,7 +14,8 @@ export const ImportEditor = ({ file, data, dataFormat, slug, onDataChanged, onOp
 
   const { options, getOption, setOption } = useForm({ 
     idField: 'id',
-    updateExisting: false // Add default value for updateExisting
+    existingAction: 'warn',
+    ignoreMissingRelations: false,
   });
 
   useEffect(() => {
@@ -87,12 +88,22 @@ export const ImportEditor = ({ file, data, dataFormat, slug, onDataChanged, onOp
 
             <Grid.Item>
               <Field.Root>
-                <Checkbox
-                  value={getOption('updateExisting')}
-                  onCheckedChange={(value) => setOption('updateExisting', value === true)}
+                <Field.Label>{i18n('plugin.form.field.existing-action.label')}</Field.Label>
+                <Field.Hint>{i18n('plugin.form.field.existing-action.hint')}</Field.Hint>
+                <SingleSelect
+                  onChange={(value) => setOption('existingAction', value)}
+                  value={getOption('existingAction')}
+                  placeholder={i18n('plugin.form.field.existing-action.placeholder')}
                 >
-                  {i18n('plugin.form.field.update-existing.label')}
-                </Checkbox>
+                  <SingleSelectOption value="warn">Warn</SingleSelectOption>
+                  <SingleSelectOption value="skip">Skip</SingleSelectOption>
+                  <SingleSelectOption value="update">Update</SingleSelectOption>
+                </SingleSelect>
+              </Field.Root>
+            </Grid.Item>
+
+            <Grid.Item>
+              <Field.Root>
                 <Checkbox
                   value={getOption('ignoreMissingRelations')}
                   onCheckedChange={(value) => setOption('ignoreMissingRelations', value === true)}

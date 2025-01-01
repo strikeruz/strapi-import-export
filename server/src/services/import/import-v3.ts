@@ -4,12 +4,18 @@ import { findOrImportFile } from './utils/file';
 import { Struct, Schema, UID } from '@strapi/types';
 import { FileContent, validateFileContent } from './validation';
 
+export enum ExistingAction {
+    Warn = 'warn',
+    Update = 'update',
+    Skip = 'skip'
+}
+
 interface ImportOptions {
-  slug: string;
-  user: any;
-  allowDraftOnPublished?: boolean;
-  updateExisting?: boolean;
-  ignoreMissingRelations?: boolean;
+    slug: string;
+    user: any;
+    allowDraftOnPublished?: boolean;
+    existingAction?: ExistingAction;
+    ignoreMissingRelations?: boolean;
 }
 
 interface ImportFailure {
@@ -125,6 +131,7 @@ async function importVersionData(
     idField: string,
     user: any,
     allowDraftOnPublished?: boolean,
+    existingAction: ExistingAction,
     importData?: Record<UID.ContentType, EntryVersion[]>
   }
 ): Promise<string> {
@@ -145,6 +152,7 @@ async function importVersionData(
     const processedData = await processEntryData(firstData, model, failures, processedEntries, { 
       user: options.user, 
       allowDraftOnPublished: options.allowDraftOnPublished, 
+      existingAction: options.existingAction,
       importData: options.importData || {} 
     });
 
@@ -152,29 +160,45 @@ async function importVersionData(
     const sanitizedData = sanitizeData(processedData, model);
 
     if (existing) {
-      if (options.status === 'draft' && !options.allowDraftOnPublished) {
-        const existingPublished = await strapi.documents(contentType).findOne({
-          documentId: existing.documentId,
-          status: 'published'
-        });
+        switch (options.existingAction) {
+            case ExistingAction.Skip:
+                console.log(`Skipping existing entry with ${options.idField}=${firstData[options.idField]}`);
+                return existing.documentId;
 
-        if (existingPublished) {
-          failures.push({ 
-            error: `Cannot apply draft to existing published entry`, 
-            data: versionData 
-          });
-          return null;
+            case ExistingAction.Update:
+                if (options.status === 'draft' && !options.allowDraftOnPublished) {
+                    const existingPublished = await strapi.documents(contentType).findOne({
+                        documentId: existing.documentId,
+                        status: 'published'
+                    });
+
+                    if (existingPublished) {
+                        failures.push({ 
+                            error: `Cannot apply draft to existing published entry`, 
+                            data: versionData 
+                        });
+                        return null;
+                    }
+                }
+
+                await strapi.documents(contentType).update({
+                    documentId: existing.documentId,
+                    locale: firstLocale === 'default' ? undefined : firstLocale,
+                    data: sanitizedData,
+                    status: options.status
+                });
+                documentId = existing.documentId;
+                processedFirstLocale = true;
+                break;
+
+            case ExistingAction.Warn:
+            default:
+                failures.push({ 
+                    error: `Entry with ${options.idField}=${firstData[options.idField]} already exists`, 
+                    data: versionData 
+                });
+                return null;
         }
-      }
-
-      await strapi.documents(contentType).update({
-        documentId: existing.documentId,
-        locale: firstLocale === 'default' ? undefined : firstLocale,
-        data: sanitizedData,
-        status: options.status
-      });
-      documentId = existing.documentId;
-      processedFirstLocale = true;
     } else {
       const created = await strapi.documents(contentType).create({
         data: sanitizedData,
@@ -194,6 +218,7 @@ async function importVersionData(
     const processedLocale = await processEntryData(localeData, model, failures, processedEntries, { 
       user: options.user, 
       allowDraftOnPublished: options.allowDraftOnPublished, 
+      existingAction: options.existingAction,
       importData: options.importData || {} 
     });
 
@@ -215,17 +240,19 @@ async function importDataV3(fileContent: FileContent, {
   slug, 
   user,
   allowDraftOnPublished = true,
-  updateExisting = false,
+  existingAction = ExistingAction.Warn,
   ignoreMissingRelations = false
 }: ImportOptions): Promise<ImportResult> {
-
   // validate file content
   if (!fileContent.data) {
     console.log('No data found in file');
     throw new Error('No data found in file');
   }
 
-  const validationResult = await validateFileContent(fileContent, { updateExisting, ignoreMissingRelations });
+  const validationResult = await validateFileContent(fileContent, { 
+    existingAction,
+    ignoreMissingRelations 
+  });
   if (!validationResult.isValid) {
     return {
       errors: validationResult.errors.map(error => {
@@ -259,7 +286,7 @@ async function importDataV3(fileContent: FileContent, {
     // Import each entry's versions
     for (const entry of entries) {
       try {
-        processEntry(contentType, entry, model, idField, user, allowDraftOnPublished, processedEntries, failures, data);
+        processEntry(contentType, entry, model, idField, user, allowDraftOnPublished, existingAction, processedEntries, failures, data);
       } catch (error) {
         console.error(`Failed to import entry`, error);
         failures.push({ error, data: entry });
@@ -277,6 +304,7 @@ async function processEntry(
   idField: string,
   user: any,
   allowDraftOnPublished: boolean,
+  existingAction: ExistingAction,
   processedEntries: ProcessedEntry[],
   failures: ImportFailure[],
   data: Record<UID.ContentType, EntryVersion[]>
@@ -290,7 +318,8 @@ async function processEntry(
       idField,
       user,
       allowDraftOnPublished,
-      importData: data // Pass the full import data for relation processing
+      importData: data,
+      existingAction
     });
     
     if (documentId) {
@@ -311,7 +340,8 @@ async function processEntry(
       idField,
       user,
       allowDraftOnPublished,
-      importData: data
+      importData: data,
+      existingAction
     });
   }
 
@@ -319,63 +349,131 @@ async function processEntry(
 }
 
 async function processRelation(
-  relationValue: any,
-  attr: Schema.Attribute.RelationWithTarget,
-  processedEntries: ProcessedEntry[],
-  failures: ImportFailure[],
-  options: {
-    user: any;
-    allowDraftOnPublished: boolean;
-    importData: Record<UID.ContentType, EntryVersion[]>;
-  }
+    relationValue: any,
+    attr: Schema.Attribute.RelationWithTarget,
+    processedEntries: ProcessedEntry[],
+    failures: ImportFailure[],
+    options: {
+        user: any;
+        allowDraftOnPublished: boolean;
+        existingAction: ExistingAction;
+        importData: Record<UID.ContentType, EntryVersion[]>;
+    }
 ): Promise<string | null> {
-  const targetModel = getModel(attr.target);
-  const targetIdField = getIdentifierField(targetModel);
+    const targetModel = getModel(attr.target);
+    const targetIdField = getIdentifierField(targetModel);
 
-  // Check if this relation has already been processed
-  const processed = processedEntries.find(entry => 
-    entry.contentType === attr.target && 
-    entry.idFieldValue === relationValue
-  );
-  
-  if (processed) {
-    return processed.documentId;
-  }
+    // Check if this relation has already been processed
+    const processed = processedEntries.find(entry => 
+        entry.contentType === attr.target && 
+        entry.idFieldValue === relationValue
+    );
+    
+    if (processed) {
+        return processed.documentId;
+    }
 
-  // Check if relation exists in database
-  const existing = await strapi.documents(attr.target).findFirst({
-    filters: { [targetIdField]: relationValue },
-    status: 'published'  // Only look for published entries
-  });
-
-  if (existing) {
-    return existing.documentId;
-  }
-
-  // If relation doesn't exist, check if it's in our import data and is a oneWay/manyWay
-  if (attr.relation === 'oneWay' || attr.relation === 'manyWay') {
-    const targetEntries = options.importData[attr.target] || [];
-    const targetEntry = targetEntries.find(entry => {
-      // Check all locales in published version
-      if (entry.published) {
-        return Object.values(entry.published).some(localeData => 
-          localeData[targetIdField] === relationValue
+    // Look for the target in import data first
+    if (options.importData[attr.target]) {
+        const targetEntry = findEntryInImportData(
+            relationValue,
+            targetIdField,
+            options.importData[attr.target]
         );
-      }
-      return false;
+
+        if (targetEntry) {
+            // If we found an entry, check if it has both draft and published versions
+            const publishedIdValue = targetEntry.published?.default?.[targetIdField];
+            const draftIdValue = targetEntry.draft?.default?.[targetIdField];
+
+            if (publishedIdValue && draftIdValue && publishedIdValue !== draftIdValue) {
+                // If the values are different, we need to look up the published version in the database
+                const dbRecord = await findInDatabase(publishedIdValue, targetModel, targetIdField);
+                if (dbRecord) {
+                    return dbRecord.documentId;
+                }
+            }
+
+            // If we're here, either:
+            // 1. The entry only has one version
+            // 2. Both versions have the same idValue
+            // 3. We couldn't find the published version in the database
+            // So process the entry
+            if (attr.relation === 'oneWay' || attr.relation === 'manyWay') {
+                console.log(`Processing related entry from import data: ${attr.target} ${relationValue}`);
+                return await processEntry(
+                    attr.target,
+                    targetEntry,
+                    targetModel,
+                    targetIdField,
+                    options.user,
+                    options.allowDraftOnPublished,
+                    options.existingAction,
+                    processedEntries,
+                    failures,
+                    options.importData
+                );
+            }
+        }
+    }
+
+    // If not found in import data or not processable, look in database
+    const dbRecord = await findInDatabase(relationValue, targetModel, targetIdField);
+    if (dbRecord) {
+        return dbRecord.documentId;
+    }
+
+    return null;
+}
+
+async function findInDatabase(
+    idValue: any,
+    targetModel: Schema.Schema,
+    targetIdField: string
+): Promise<{ documentId: string } | null> {
+    // Check both published and draft versions
+    const publishedVersion = await strapi.documents(targetModel.uid as UID.ContentType).findFirst({
+        filters: { [targetIdField]: idValue },
+        status: 'published'
     });
 
-    if (targetEntry?.published) {
-      console.log(`Found published related entry in import data, processing it first: ${attr.target} ${relationValue}`);
-      const result = await processEntry(attr.target, targetEntry, targetModel, targetIdField, options.user, options.allowDraftOnPublished, processedEntries, failures, options.importData);
+    const draftVersion = await strapi.documents(targetModel.uid as UID.ContentType).findFirst({
+        filters: { [targetIdField]: idValue },
+        status: 'draft'
+    });
 
-      return result;
-    } else {
-      console.log(`Found related entry in import data but it has no published version: ${attr.target} ${relationValue}`);
+    if (publishedVersion && draftVersion) {
+        if (publishedVersion.documentId === draftVersion.documentId) {
+            return publishedVersion;
+        }
+        console.warn(`Found both published and draft versions with different documentIds for ${targetModel.uid} ${idValue}. Using published version.`);
+        return publishedVersion;
     }
-  }
 
-  return null;
+    return publishedVersion || draftVersion;
+}
+
+function findEntryInImportData(
+    relationValue: any,
+    targetIdField: string,
+    targetEntries: EntryVersion[]
+): EntryVersion | null {
+    return targetEntries.find(entry => {
+        // Check draft version first as it might be the intended target
+        if (entry.draft) {
+            const draftMatch = Object.values(entry.draft).some(
+                localeData => localeData[targetIdField] === relationValue
+            );
+            if (draftMatch) return true;
+        }
+        // Then check published version
+        if (entry.published) {
+            return Object.values(entry.published).some(
+                localeData => localeData[targetIdField] === relationValue
+            );
+        }
+        return false;
+    }) || null;
 }
 
 async function processEntryData(
@@ -386,6 +484,7 @@ async function processEntryData(
   options: {
     user: any;
     allowDraftOnPublished: boolean;
+    existingAction: ExistingAction;
     importData?: Record<UID.ContentType, EntryVersion[]>;
 }) {
   const processed = { ...data };
@@ -405,7 +504,8 @@ async function processEntryData(
             processRelation(value, attr, processedEntries, failures, {
               user: options.user,
               importData: options.importData || {},
-              allowDraftOnPublished: options.allowDraftOnPublished
+              allowDraftOnPublished: options.allowDraftOnPublished,
+              existingAction: options.existingAction
             })
           )
         );
@@ -414,7 +514,8 @@ async function processEntryData(
         const documentId = await processRelation(data[key], attr, processedEntries, failures, {
           user: options.user,
           importData: options.importData || {},
-          allowDraftOnPublished: options.allowDraftOnPublished
+          allowDraftOnPublished: options.allowDraftOnPublished,
+          existingAction: options.existingAction
         });
         processed[key] = documentId;
       }
@@ -422,10 +523,16 @@ async function processEntryData(
       processed[key] = await processComponent(data[key], attr, processedEntries, failures, {
         user: options.user,
         allowDraftOnPublished: options.allowDraftOnPublished,
-        importData: options.importData || {}
+        importData: options.importData || {},
+        existingAction: options.existingAction
       });
     } else if (isDynamicZoneAttribute(attr)) {
-      processed[key] = await processDynamicZone(data[key], processedEntries, failures, { user: options.user, importData: options.importData, allowDraftOnPublished: options.allowDraftOnPublished });
+      processed[key] = await processDynamicZone(data[key], processedEntries, failures, { 
+        user: options.user, 
+        importData: options.importData, 
+        allowDraftOnPublished: options.allowDraftOnPublished,
+        existingAction: options.existingAction
+      });
     } else if (isMediaAttribute(attr)) {
       const allowedTypes = (attr as Schema.Attribute.Media).allowedTypes || ['any'];
       processed[key] = await processMedia(data[key], { user: options.user }, allowedTypes);
@@ -443,12 +550,23 @@ async function processComponent(
   options: {
     user: any;
     allowDraftOnPublished: boolean;
+    existingAction: ExistingAction;
     importData?: Record<UID.ContentType, EntryVersion[]>;
 }) {
   if (Array.isArray(value)) {
-    return Promise.all(value.map(item => processComponentItem(item, attr.component, processedEntries, failures, { user: options.user, importData: options.importData, allowDraftOnPublished: options.allowDraftOnPublished })))
+    return Promise.all(value.map(item => processComponentItem(item, attr.component, processedEntries, failures, { 
+      user: options.user, 
+      importData: options.importData, 
+      allowDraftOnPublished: options.allowDraftOnPublished, 
+      existingAction: options.existingAction 
+    })))
   }
-  return processComponentItem(value, attr.component, processedEntries, failures, { user: options.user, importData: options.importData, allowDraftOnPublished: options.allowDraftOnPublished });
+  return processComponentItem(value, attr.component, processedEntries, failures, { 
+    user: options.user, 
+    importData: options.importData, 
+    allowDraftOnPublished: options.allowDraftOnPublished,
+    existingAction: options.existingAction
+  });
 }
 
 async function processComponentItem(
@@ -460,6 +578,7 @@ async function processComponentItem(
     user: any;
     importData?: Record<UID.ContentType, EntryVersion[]>;
     allowDraftOnPublished: boolean;
+    existingAction: ExistingAction;
 }) {
   const processed = { ...item };
   const componentModel = getModel(componentType);
@@ -474,7 +593,8 @@ async function processComponentItem(
       processed[key] = await processRelation(item[key], attr, processedEntries, failures, {
         user: options.user,
         importData: options.importData,
-        allowDraftOnPublished: options.allowDraftOnPublished
+        allowDraftOnPublished: options.allowDraftOnPublished,
+        existingAction: options.existingAction
       });
     }
   }
@@ -482,11 +602,16 @@ async function processComponentItem(
   return processed;
 }
 
-async function processDynamicZone(items, processedEntries: ProcessedEntry[], failures: ImportFailure[], options: { user: any, importData?: Record<UID.ContentType, EntryVersion[]>, allowDraftOnPublished: boolean }) {
+async function processDynamicZone(items, processedEntries: ProcessedEntry[], failures: ImportFailure[], options: { user: any, importData?: Record<UID.ContentType, EntryVersion[]>, allowDraftOnPublished: boolean, existingAction: ExistingAction }) {
   return Promise.all(
     items.map(async item => ({
       __component: item.__component,
-      ...(await processComponentItem(item, item.__component, processedEntries, failures, { user: options.user, importData: options.importData, allowDraftOnPublished: options.allowDraftOnPublished }))
+      ...(await processComponentItem(item, item.__component, processedEntries, failures, { 
+        user: options.user, 
+        importData: options.importData, 
+        allowDraftOnPublished: options.allowDraftOnPublished, 
+        existingAction: options.existingAction 
+      }))
     }))
   );
 }
