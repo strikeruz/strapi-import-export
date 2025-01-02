@@ -12,17 +12,46 @@ const bodySchema = Joi.object({
   relationsAsId: Joi.boolean().default(false),
   deepness: Joi.number().integer().min(1).default(5),
   exportPluginsContentTypes: Joi.boolean().default(false),
+  documentIds: Joi.array().items(Joi.number()).default([]),
+  exportAllLocales: Joi.boolean().default(false),
+  exportRelations: Joi.boolean().default(false),
+  deepPopulateRelations: Joi.boolean().default(false),
+  deepPopulateComponentRelations: Joi.boolean().default(false),
 });
 
 const exportData = async (ctx) => {
-  let { slug, search, applySearch, exportFormat, relationsAsId, deepness, exportPluginsContentTypes } = checkParams(bodySchema, ctx.request.body);
+  let { 
+    slug, 
+    search, 
+    applySearch, 
+    exportFormat, 
+    relationsAsId, 
+    deepness, 
+    exportPluginsContentTypes,
+    documentIds,
+    exportAllLocales,
+    exportRelations,
+    deepPopulateRelations,
+    deepPopulateComponentRelations
+  } = checkParams(bodySchema, ctx.request.body);
 
   let data;
   console.log('exportFormat', exportFormat);
   try {
     if (exportFormat === 'json-v3') {
       console.log('exportDataV3');
-      data = await exportDataV3({ slug, search, applySearch, exportPluginsContentTypes });
+      data = await getService('export').exportDataV3({ 
+        slug, 
+        search, 
+        applySearch, 
+        exportPluginsContentTypes,
+        documentIds,
+        maxDepth: deepness,
+        exportAllLocales,
+        exportRelations,
+        deepPopulateRelations,
+        deepPopulateComponentRelations
+      });
     } else if (exportFormat === 'json-v2') {
       console.log('exportDataV2');
       data = await getService('export').exportDataV2({ slug, search, applySearch, deepness, exportPluginsContentTypes });
