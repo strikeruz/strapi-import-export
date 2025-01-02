@@ -69,7 +69,6 @@ export async function exportDataV3({
 
     return JSON.stringify({
         version: 3,
-        data: context.exportedData,
-        relations: context.processedRelations
+        data: context.exportedData
     }, null, '\t');
 } 

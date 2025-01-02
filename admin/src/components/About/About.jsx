@@ -15,13 +15,18 @@ const About = () => {
         <Box>
           <Flex direction="column" alignItems="start" gap={4}>
           <Flex direction="column" alignItems="start" gap={2}>
-                <Typography variant="delta">Strapi 5 Version</Typography>
+                <Typography variant="delta">Strapi 5 Versions</Typography>
+                <Typography variant="epsilon">V3 Format</Typography>
                 <Typography>
                     {i18n({
-                        id: 'plugin.page.about.strapi5.description',
-                        defaultMessage: 'This is a fork of the original Strapi 4 plugin, converted to Strapi 5.'
+                        id: 'plugin.page.about.strapi5.v3.description',
+                        defaultMessage: 'Complete rewrite focusing on draft/published content and better relation handling.'
                     })}
                 </Typography>
+                <Link href="https://github.com/Moonlight63/strapi-import-export" isExternal>
+                    GitHub (V3 Fork)
+                </Link>
+                <Typography variant="epsilon" marginTop={2}>Original Strapi 5 Port</Typography>
                 <Flex direction="row" gap={4}>
                     <Link href="https://github.com/Prototypr/strapi-import-export" isExternal>
                         GitHub (Strapi 5)
