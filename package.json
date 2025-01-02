@@ -1,10 +1,10 @@
 {
-  "name": "strapi-import-export",
+  "name": "strapi-import-export-v3",
   "version": "0.1.1",
-  "description": "Import export for strapi 5",
+  "description": "Import export for strapi 5 (V3 fork)",
   "keywords": [],
   "license": "MIT",
-  "author": "Graeme Fulton <graeme@prototypr.io>",
+  "author": "Dalen Catt <dalen@dalencatt.com>",
   "type": "commonjs",
   "exports": {
     "./package.json": "./package.json",
@@ -68,6 +68,6 @@
     "kind": "plugin",
     "name": "strapi-import-export",
     "displayName": "Import Export",
-    "description": "Import export for strapi 5"
+    "description": "Import export for strapi 5 (V3 fork)"
   }
 }
