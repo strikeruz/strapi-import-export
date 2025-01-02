@@ -2,6 +2,7 @@
 Import/Export data from and to your database for Strapi 5 - a fork of [strapi-import-export](https://github.com/Baboo7/strapi-plugin-import-export-entries), built from scratch using the [@strapi/sdk-plugin](https://docs.strapi.io/dev-docs/plugins/development/create-a-plugin).
 
 Original by [Graeme Fulton](https://github.com/prototypr)
+
 V3 fork by [Dalen Catt](https://github.com/Moonlight63)
 
 <img width="160" src="https://github.com/user-attachments/assets/85fbb6ed-6d7e-408d-988e-ffeaee5de9f4"/>
