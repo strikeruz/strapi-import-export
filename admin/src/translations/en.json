@@ -19,6 +19,19 @@
 
   "strapi-import-export.plugin.form.field.id-field.hint": "Choose the field used as a unique identifier",
   "strapi-import-export.plugin.form.field.id-field.label": "Id Field",
+  "strapi-import-export.plugin.form.field.id-field.placeholder": "Select identifier field",
+  "strapi-import-export.plugin.form.field.existing-action.label": "Existing Entry Action",
+  "strapi-import-export.plugin.form.field.existing-action.hint": "Choose how to handle existing entries",
+  "strapi-import-export.plugin.form.field.existing-action.placeholder": "Select action",
+  
+  "strapi-import-export.plugin.form.field.ignore-missing-relations.label": "Ignore Missing Relations",
+  "strapi-import-export.plugin.form.field.ignore-missing-relations.hint": "Continue import even if related entries are not found",
+
+  "strapi-import-export.plugin.form.field.allow-locale-updates.label": "Allow New Locales on Skip",
+  "strapi-import-export.plugin.form.field.allow-locale-updates.hint": "When skipping existing entries, still allow creation of new locales",
+
+  "strapi-import-export.plugin.form.field.disallow-new-relations.label": "Prevent Relation Changes on Existing",
+  "strapi-import-export.plugin.form.field.disallow-new-relations.hint": "When skipping existing entries, prevent any changes to their relations",
 
   "strapi-import-export.plugin.message.export.error.idfield.title": "Invalid ID Field Configuration",
   "strapi-import-export.plugin.message.export.error.idfield.message": "The ID field must be configured as required and unique",
@@ -62,10 +75,27 @@
   "strapi-import-export.plugin.export.copied": "Copied",
   "strapi-import-export.plugin.export.fetching-data": "Fetching data...",
   "strapi-import-export.plugin.export.export-format": "Export Format",
+  "strapi-import-export.plugin.export.export-format.hint": "Choose the format for your exported data",
   "strapi-import-export.plugin.export.options": "Options",
   "strapi-import-export.plugin.export.plugins-content-types": "Export plugins content types",
+  "strapi-import-export.plugin.export.plugins-content-types.hint": "Include content types from plugins in the export",
   "strapi-import-export.plugin.export.relations-as-id": "Export relations as id.",
+  "strapi-import-export.plugin.export.relations-as-id.hint": "Export only IDs for related content instead of full objects",
   "strapi-import-export.plugin.export.apply-filters-and-sort": "Apply filters and sort to exported data.",
+  "strapi-import-export.plugin.export.apply-filters-and-sort.hint": "Use current view's filters and sorting in the export",
   "strapi-import-export.plugin.export.deepness": "Deepness",
-  "strapi-import-export.plugin.export.whole-database": "Whole database"
+  "strapi-import-export.plugin.export.deepness.hint": "Set how deep to traverse relations",
+  "strapi-import-export.plugin.export.max-depth": "Max Depth",
+  "strapi-import-export.plugin.export.max-depth.hint": "Set maximum depth for traversing relations",
+  "strapi-import-export.plugin.export.export-all-locales": "Export all locales",
+  "strapi-import-export.plugin.export.export-all-locales.hint": "Include all localized versions of content",
+  "strapi-import-export.plugin.export.export-relations": "Export relations",
+  "strapi-import-export.plugin.export.export-relations.hint": "Include related content in the export",
+  "strapi-import-export.plugin.export.deep-populate-relations": "Deep populate relations",
+  "strapi-import-export.plugin.export.deep-populate-relations.hint": "Include relations of related content",
+  "strapi-import-export.plugin.export.deep-populate-component-relations": "Deep populate component relations",
+  "strapi-import-export.plugin.export.deep-populate-component-relations.hint": "Include relations within components",
+  "strapi-import-export.plugin.export.whole-database": "Whole database",
+
+  "strapi-import-export.plugin.import.errors": "Import Errors"
 }

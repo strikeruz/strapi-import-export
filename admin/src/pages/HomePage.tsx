@@ -1,15 +1,17 @@
 //@ts-nocheck
-import { Box, Checkbox, Flex, Link, Option, Select, Typography } from '@strapi/design-system';
+import { Box, Checkbox, Flex, Link, Option, Select, Typography, Modal, Button } from '@strapi/design-system';
+import { Download } from '@strapi/icons';
+
 import React, { memo, useState } from 'react';
 import { Page } from '@strapi/strapi/admin';
 import { pluginPermissions } from '../permissions';
 import { Main } from '@strapi/design-system';
 import { useIntl } from 'react-intl';
-import { Header } from '../components/Header.jsx';
-import { ImportModal } from '../components/ImportModal/ImportModal.jsx';
-// import { ExportModal } from '../components/ExportModal/ExportModal.js';
-import Preferences from '../components/Preferences/Preferences.jsx';
-import About from '../components/About/About.jsx';
+import { Header } from '../components/Header';
+import { ImportModal } from '../components/ImportModal/ImportModal';
+import { ExportModalContent, useExportModal, ExportModalFooter }  from '../components/ExportModal/ExportModal';
+import Preferences from '../components/Preferences/Preferences';
+import About from '../components/About/About';
 import { getTranslation } from '../utils/getTranslation';
 import { useI18n } from '../hooks/useI18n';
 import { dataFormats } from '../utils/dataFormats';
@@ -17,6 +19,15 @@ import { dataFormats } from '../utils/dataFormats';
 const HomePage = () => {
   const { formatMessage } = useIntl();
   const { i18n } = useI18n();
+
+
+  const state = useExportModal({ unavailableOptions: ['exportPluginsContentTypes'] });
+
+
+
+
+
+
   return (
     <>
     {/* mango */}
@@ -44,8 +55,33 @@ const HomePage = () => {
                   <Flex direction="column" alignItems="start" gap={4}>
                     <Flex gap={4}>
                       <ImportModal />
-                      {/* <ExportModal availableExportFormats={[dataFormats.JSON_V2]}/> */}
-                      {/* <ExportButton availableExportFormats={[dataFormats.JSON_V2]} /> */}
+                      <Modal.Root onOpenChange={state.handleOpenChange}>
+                        <Modal.Trigger>
+                          <Button startIcon={<Download />}>{i18n('plugin.cta.export', 'Export')}</Button>
+                        </Modal.Trigger>
+                        {state.isOpen && (
+                        <Modal.Content>
+                          <Modal.Header>
+                            <Modal.Title>
+                              <Flex gap={2}>
+                                <Typography fontWeight="bold" textColor="neutral800" tag="h2" id="title">
+                                  {i18n('plugin.cta.export', 'Export')}
+                                </Typography>
+                                <Typography textColor="neutral800" tag="h2" id="title">
+                                  {state.isSlugWholeDb ? i18n('plugin.export.whole-database', 'Whole database') : state.slug}
+                                </Typography>
+                              </Flex>
+                            </Modal.Title>
+                          </Modal.Header>
+                          <Modal.Body>
+                            <ExportModalContent state={state} />
+                          </Modal.Body>
+                          <Modal.Footer>
+                            <ExportModalFooter state={state} />
+                          </Modal.Footer>
+                        </Modal.Content>
+                      )}
+                      </Modal.Root>
                     </Flex>
                   </Flex>
                 </Box>

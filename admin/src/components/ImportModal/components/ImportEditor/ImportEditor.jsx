@@ -7,7 +7,15 @@ import { useForm } from '../../../../hooks/useForm';
 import { useI18n } from '../../../../hooks/useI18n';
 import { Editor } from '../../../Editor/Editor';
 
-export const ImportEditor = ({ file, data, dataFormat, slug, onDataChanged, onOptionsChanged }) => {
+export const ImportEditor = ({ 
+  file, 
+  data, 
+  dataFormat, 
+  slug, 
+  onDataChanged, 
+  onOptionsChanged,
+  version 
+}) => {
   const { i18n } = useI18n();
   const [attributeNames, setAttributeNames] = useState([]);
   const fetchClient = useFetchClient(); // Use the hook here within the component
@@ -16,7 +24,15 @@ export const ImportEditor = ({ file, data, dataFormat, slug, onDataChanged, onOp
     idField: 'id',
     existingAction: 'warn',
     ignoreMissingRelations: false,
+    allowLocaleUpdates: false,
+    disallowNewRelations: false,
   });
+
+  useEffect(() => {
+    if (options.existingAction === 'skip') {
+      setOption('disallowNewRelations', true);
+    }
+  }, [options.existingAction]);
 
   useEffect(() => {
     const fetchAttributeNames = async () => {
@@ -64,32 +80,34 @@ export const ImportEditor = ({ file, data, dataFormat, slug, onDataChanged, onOp
       <Tabs.Content value="options">
         <Box padding={4}>
           <Grid.Root gap={4} marginTop={2}>
-            <Grid.Item>
-              <Field.Root>
-                <Field.Label>{i18n('plugin.form.field.id-field.label')}</Field.Label>
-                <Field.Hint>{i18n('plugin.form.field.id-field.hint')}</Field.Hint>
-                <SingleSelect
-                  onChange={(value) => setOption('idField', value)}
-                  value={getOption('idField')}
-                  placeholder={i18n('plugin.form.field.id-field.placeholder')}
-                >
-                  {attributeNames?.length > 0 ? (
-                    attributeNames.map((name) => (
-                      <SingleSelectOption key={name} value={name}>
-                        {name}
-                      </SingleSelectOption>
-                    ))
-                  ) : (
-                    <SingleSelectOption value="">No attribute found</SingleSelectOption>
-                  )}
-                </SingleSelect>
-              </Field.Root>
-            </Grid.Item>
+            {version !== 3 && (
+              <Grid.Item>
+                <Field.Root hint={i18n('plugin.form.field.id-field.hint')}>
+                  <Field.Label>{i18n('plugin.form.field.id-field.label')}</Field.Label>
+                  <Field.Hint />
+                  <SingleSelect
+                    onChange={(value) => setOption('idField', value)}
+                    value={getOption('idField')}
+                    placeholder={i18n('plugin.form.field.id-field.placeholder')}
+                  >
+                    {attributeNames?.length > 0 ? (
+                      attributeNames.map((name) => (
+                        <SingleSelectOption key={name} value={name}>
+                          {name}
+                        </SingleSelectOption>
+                      ))
+                    ) : (
+                      <SingleSelectOption value="">No attribute found</SingleSelectOption>
+                    )}
+                  </SingleSelect>
+                </Field.Root>
+              </Grid.Item>
+            )}
 
             <Grid.Item>
-              <Field.Root>
+              <Field.Root hint={i18n('plugin.form.field.existing-action.hint')}>
                 <Field.Label>{i18n('plugin.form.field.existing-action.label')}</Field.Label>
-                <Field.Hint>{i18n('plugin.form.field.existing-action.hint')}</Field.Hint>
+                <Field.Hint />
                 <SingleSelect
                   onChange={(value) => setOption('existingAction', value)}
                   value={getOption('existingAction')}
@@ -103,18 +121,45 @@ export const ImportEditor = ({ file, data, dataFormat, slug, onDataChanged, onOp
             </Grid.Item>
 
             <Grid.Item>
-              <Field.Root>
+              <Field.Root hint={i18n('plugin.form.field.ignore-missing-relations.hint')}>
                 <Checkbox
-                  value={getOption('ignoreMissingRelations')}
+                  checked={getOption('ignoreMissingRelations')}
                   onCheckedChange={(value) => setOption('ignoreMissingRelations', value === true)}
                 >
                   {i18n('plugin.form.field.ignore-missing-relations.label')}
                 </Checkbox>
-                <Field.Hint>
-                  {i18n('plugin.form.field.update-existing.hint')}
-                </Field.Hint>
+                <Field.Hint />
               </Field.Root>
             </Grid.Item>
+
+            {options.existingAction === 'skip' && (
+              <>
+                <Grid.Item>
+                  <Field.Root hint={i18n('plugin.form.field.allow-locale-updates.hint')}>
+                    <Checkbox
+                      checked={getOption('allowLocaleUpdates')}
+                      onCheckedChange={(value) => setOption('allowLocaleUpdates', value === true)}
+                    >
+                      {i18n('plugin.form.field.allow-locale-updates.label')}
+                    </Checkbox>
+                    <Field.Hint />
+                  </Field.Root>
+                </Grid.Item>
+
+                <Grid.Item>
+                  <Field.Root hint={i18n('plugin.form.field.disallow-new-relations.hint')}>
+                    <Checkbox
+                      checked={getOption('disallowNewRelations')}
+                      onCheckedChange={(value) => setOption('disallowNewRelations', value === true)}
+                    >
+                      {i18n('plugin.form.field.disallow-new-relations.label')}
+                    </Checkbox>
+                    <Field.Hint />
+                  </Field.Root>
+                </Grid.Item>
+              </>
+            )}
+
           </Grid.Root>
         </Box>
       </Tabs.Content>

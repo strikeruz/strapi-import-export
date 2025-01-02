@@ -100,9 +100,17 @@ export const ImportModal = ({ onClose }) => {
   const [uploadingData, setUploadingData] = useState(false);
   const [importFailuresContent, setImportFailuresContent] = useState('');
   const [importErrorsContent, setImportErrorsContent] = useState('');
+  const [parsedData, setParsedData] = useState(null);
 
-  const onDataChanged = (data) => {
-    setData(data);
+  const handleDataChanged = (newData) => {
+    try {
+      const parsed = JSON.parse(newData);
+      setParsedData(parsed);
+      setData(newData);
+    } catch (e) {
+      setParsedData(null);
+      setData(newData);
+    }
   };
 
   const onOptionsChanged = (options) => {
@@ -312,7 +320,15 @@ export const ImportModal = ({ onClose }) => {
               </Flex>
             </>
           )}
-          {showEditor && <ImportEditor file={file} data={data} dataFormat={dataFormat} slug={slug} onDataChanged={onDataChanged} onOptionsChanged={onOptionsChanged} />}
+          {showEditor && <ImportEditor 
+            file={file}
+            data={data}
+            dataFormat={dataFormat}
+            slug={slug}
+            onDataChanged={handleDataChanged}
+            onOptionsChanged={setOptions}
+            version={parsedData?.version}
+          />}
           {showSuccess && (
             <Flex direction="column" alignItems="center" gap={4}>
               <Box paddingBottom={4}>

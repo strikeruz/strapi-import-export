@@ -79,7 +79,17 @@ export const useExportModal = ({
         setOptions(prev => ({ ...prev, [optionName]: value }));
     };
 
-    const shouldShowOption = (optionName: string) => unavailableOptions.indexOf(optionName) === -1;
+    const shouldShowOption = (optionName: string) => {
+        if (unavailableOptions.indexOf(optionName) !== -1) {
+            return false;
+        }
+
+        if (optionName === 'relationsAsId' && options.exportFormat === dataFormats.JSON_V3) {
+            return false;
+        }
+
+        return true;
+    };
 
     const getData = async () => {
         setFetchingData(true);
@@ -182,7 +192,10 @@ export const useExportModal = ({
     };
 
     const shouldShowDeepnessOption = () => {
-        return shouldShowOption('deepness') && options.exportFormat !== dataFormats.JSON_V3;
+        return shouldShowOption('deepness') && (
+            options.exportFormat === dataFormats.JSON_V2 || 
+            (options.exportFormat === dataFormats.JSON_V3 && options.exportRelations)
+        );
     };
 
 
@@ -225,22 +238,25 @@ export const ExportModalContent: React.FC<{ state: ReturnType<typeof useExportMo
                 {state.shouldShowOption('exportFormat') && (
                     <Grid.Root gap={2}>
                         <Grid.Item xs={12}>
-                            <Typography fontWeight="bold" textColor="neutral800" tag="h2">{i18n('plugin.export.export-format')}</Typography>
-                        </Grid.Item>
-                        <Grid.Item xs={12}>
-                            <SingleSelect
-                                id="export-format"
-                                required
-                                placeholder={i18n('plugin.export.export-format')}
-                                value={state.options.exportFormat}
-                                onChange={(value) => state.handleSetOption('exportFormat', value as string)}
-                            >
-                                {state.availableExportFormats.map((format) => (
-                                    <SingleSelectOption key={format} value={format}>
-                                        {i18n(`plugin.data-format.${format}`)}
-                                    </SingleSelectOption>
-                                ))}
-                            </SingleSelect>
+                            <Field.Root hint={i18n('plugin.export.export-format.hint')}>
+                                <Typography fontWeight="bold" textColor="neutral800" tag="h2">
+                                    {i18n('plugin.export.export-format')}
+                                </Typography>
+                                <Field.Hint />
+                                <SingleSelect
+                                    id="export-format"
+                                    required
+                                    placeholder={i18n('plugin.export.export-format')}
+                                    value={state.options.exportFormat}
+                                    onChange={(value) => state.handleSetOption('exportFormat', value as string)}
+                                >
+                                    {state.availableExportFormats.map((format) => (
+                                        <SingleSelectOption key={format} value={format}>
+                                            {i18n(`plugin.data-format.${format}`)}
+                                        </SingleSelectOption>
+                                    ))}
+                                </SingleSelect>
+                            </Field.Root>
                         </Grid.Item>
                     </Grid.Root>
                 )}
@@ -250,75 +266,112 @@ export const ExportModalContent: React.FC<{ state: ReturnType<typeof useExportMo
                         {i18n('plugin.export.options')}
                     </Typography>
                     {state.shouldShowOption('relationsAsId') && (
-                        <Checkbox checked={state.options.relationsAsId} onCheckedChange={(value) => state.handleSetOption('relationsAsId', value==true)}>
-                            {i18n('plugin.export.relations-as-id')}
-                        </Checkbox>
+                        <Field.Root hint={i18n('plugin.export.relations-as-id.hint')}>
+                            <Checkbox 
+                                checked={state.options.relationsAsId} 
+                                onCheckedChange={(value) => state.handleSetOption('relationsAsId', value==true)}
+                            >
+                                {i18n('plugin.export.relations-as-id')}
+                            </Checkbox>
+                            <Field.Hint />
+                        </Field.Root>
                     )}
                     {state.shouldShowOption('applyFilters') && (
-                        <Checkbox checked={state.options.applyFilters} onCheckedChange={(value) => state.handleSetOption('applyFilters', value==true)}>
-                            {i18n('plugin.export.apply-filters-and-sort')}
-                        </Checkbox>
+                        <Field.Root hint={i18n('plugin.export.apply-filters-and-sort.hint')}>
+                            <Checkbox 
+                                checked={state.options.applyFilters} 
+                                onCheckedChange={(value) => state.handleSetOption('applyFilters', value==true)}
+                            >
+                                {i18n('plugin.export.apply-filters-and-sort')}
+                            </Checkbox>
+                            <Field.Hint />
+                        </Field.Root>
                     )}
                     {state.shouldShowOption('exportPluginsContentTypes') && (
-                        <Checkbox checked={state.options.exportPluginsContentTypes} onCheckedChange={(value) => state.handleSetOption('exportPluginsContentTypes', value==true)}>
-                            {i18n('plugin.export.plugins-content-types')}
-                        </Checkbox>
+                        <Field.Root hint={i18n('plugin.export.plugins-content-types.hint')}>
+                            <Checkbox 
+                                checked={state.options.exportPluginsContentTypes} 
+                                onCheckedChange={(value) => state.handleSetOption('exportPluginsContentTypes', value==true)}
+                            >
+                                {i18n('plugin.export.plugins-content-types')}
+                            </Checkbox>
+                            <Field.Hint />
+                        </Field.Root>
                     )}
                     {state.shouldShowOption('exportAllLocales') && (
-                        <Checkbox 
-                            checked={state.options.exportAllLocales} 
-                            onCheckedChange={(value) => state.handleSetOption('exportAllLocales', value==true)}
-                        >
-                            {i18n('plugin.export.export-all-locales')}
-                        </Checkbox>
+                        <Field.Root hint={i18n('plugin.export.export-all-locales.hint')}>
+                            <Checkbox 
+                                checked={state.options.exportAllLocales} 
+                                onCheckedChange={(value) => state.handleSetOption('exportAllLocales', value==true)}
+                            >
+                                {i18n('plugin.export.export-all-locales')}
+                            </Checkbox>
+                            <Field.Hint />
+                        </Field.Root>
                     )}
                     {state.shouldShowOption('exportRelations') && (
-                        <Checkbox 
-                            checked={state.options.exportRelations} 
-                            onCheckedChange={(value) => state.handleSetOption('exportRelations', value==true)}
-                        >
-                            {i18n('plugin.export.export-relations')}
-                        </Checkbox>
+                        <Field.Root hint={i18n('plugin.export.export-relations.hint')}>
+                            <Checkbox 
+                                checked={state.options.exportRelations} 
+                                onCheckedChange={(value) => state.handleSetOption('exportRelations', value==true)}
+                            >
+                                {i18n('plugin.export.export-relations')}
+                            </Checkbox>
+                            <Field.Hint />
+                        </Field.Root>
                     )}
                     {state.shouldShowOption('exportRelations') && state.options.exportRelations && (
                         <Flex gap={2}>
-                            <Checkbox 
-                                checked={state.options.deepPopulateRelations} 
-                                onCheckedChange={(value) => state.handleSetOption('deepPopulateRelations', value==true)}
-                            >
-                                {i18n('plugin.export.deep-populate-relations')}
-                            </Checkbox>
-                            <Checkbox 
-                                checked={state.options.deepPopulateComponentRelations} 
-                                onCheckedChange={(value) => state.handleSetOption('deepPopulateComponentRelations', value==true)}
-                            >
-                                {i18n('plugin.export.deep-populate-component-relations')}
-                            </Checkbox>
+                            <Field.Root hint={i18n('plugin.export.deep-populate-relations.hint')}>
+                                <Checkbox 
+                                    checked={state.options.deepPopulateRelations} 
+                                    onCheckedChange={(value) => state.handleSetOption('deepPopulateRelations', value==true)}
+                                >
+                                    {i18n('plugin.export.deep-populate-relations')}
+                                </Checkbox>
+                                <Field.Hint />
+                            </Field.Root>
+                            <Field.Root hint={i18n('plugin.export.deep-populate-component-relations.hint')}>
+                                <Checkbox 
+                                    checked={state.options.deepPopulateComponentRelations} 
+                                    onCheckedChange={(value) => state.handleSetOption('deepPopulateComponentRelations', value==true)}
+                                >
+                                    {i18n('plugin.export.deep-populate-component-relations')}
+                                </Checkbox>
+                                <Field.Hint />
+                            </Field.Root>
                         </Flex>
                     )}
                     {state.shouldShowDeepnessOption() && (
-                        <>
-                            <Flex direction="column" gap={2} marginTop={3}>
-                                <Grid.Item xs={12}>
-                                    <Typography fontWeight="bold" textColor="neutral800" tag="h2">
-                                        {i18n('plugin.export.deepness')}
-                                    </Typography>
-                                </Grid.Item>
-                                <Grid.Item xs={12}>
-                                    <SingleSelect
-                                        placeholder={i18n('plugin.export.deepness')}
-                                        value={state.options.deepness}
-                                        onChange={(value) => state.handleSetOption('deepness', parseInt(value as string, 10))}
-                                    >
-                                        {range(1, 21).map((deepness) => (
-                                            <SingleSelectOption key={deepness} value={deepness}>
-                                                {deepness}
-                                            </SingleSelectOption>
-                                        ))}
-                                    </SingleSelect>
-                                </Grid.Item>
-                            </Flex>
-                        </>
+                        <Field.Root hint={i18n(
+                            state.options.exportFormat === dataFormats.JSON_V3 
+                                ? 'plugin.export.max-depth.hint'
+                                : 'plugin.export.deepness.hint'
+                        )}>
+                            <Typography fontWeight="bold" textColor="neutral800" tag="h2">
+                                {i18n(
+                                    state.options.exportFormat === dataFormats.JSON_V3 
+                                        ? 'plugin.export.max-depth'
+                                        : 'plugin.export.deepness'
+                                )}
+                            </Typography>
+                            <Field.Hint />
+                            <SingleSelect
+                                placeholder={i18n(
+                                    state.options.exportFormat === dataFormats.JSON_V3 
+                                        ? 'plugin.export.max-depth'
+                                        : 'plugin.export.deepness'
+                                )}
+                                value={state.options.deepness}
+                                onChange={(value) => state.handleSetOption('deepness', parseInt(value as string, 10))}
+                            >
+                                {range(1, 21).map((deepness) => (
+                                    <SingleSelectOption key={deepness} value={deepness}>
+                                        {deepness}
+                                    </SingleSelectOption>
+                                ))}
+                            </SingleSelect>
+                        </Field.Root>
                     )}
                 </Flex>
             </>

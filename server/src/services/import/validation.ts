@@ -1,6 +1,6 @@
 import { Schema, UID } from '@strapi/types';
 import { getModel, isComponentAttribute, isDynamicZoneAttribute, isRelationAttribute } from '../../utils/models';
-import { getIdentifierField } from '../export/export-v3';
+import { getIdentifierField } from '../../utils/identifiers';
 import { EntryVersion, LocaleVersions, ExistingAction } from './import-v3';
 
 interface ValidationError {
