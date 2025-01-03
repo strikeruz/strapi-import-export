@@ -35,6 +35,13 @@ module.exports = {
 
 ---
 
+### Changelog
+
+- 0.1.2 - Fixed relations not being processed correctly in export
+- 0.1.1 - Added JSON v3 format
+
+---
+
 ### JSON v3 Format
 The v3 format is a complete rewrite that focuses on properly handling draft/published content in Strapi 5:
 
