@@ -37,6 +37,7 @@ module.exports = {
 
 ### Changelog
 
+- 0.1.4 - Added details to import failures
 - 0.1.3 - Fixed UID field type being used for idField
 - 0.1.2 - Fixed relations not being processed correctly in export
 - 0.1.1 - Added JSON v3 format
