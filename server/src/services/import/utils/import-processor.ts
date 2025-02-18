@@ -38,9 +38,11 @@ export class ImportProcessor {
                 } catch (error) {
                     logger.error(`Failed to import entry`, context, error);
                     if (error.details) {
-                        logger.debug("Error Details", { ...context, details: error.details });
+                        logger.debug("Error Details", { ...context, details: JSON.stringify(error.details, null, 2) });
+                        this.context.addFailure(error.message || 'Unknown error', entry, error.details);
+                    } else {
+                        this.context.addFailure(error.message || 'Unknown error', entry);
                     }
-                    this.context.addFailure(error.message || 'Unknown error', entry);
                 }
             }
         }

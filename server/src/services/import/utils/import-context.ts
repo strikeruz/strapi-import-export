@@ -56,8 +56,8 @@ export class ImportContext {
         return this.processedRecordsByDocumentId.get(documentId);
     }
 
-    addFailure(error: string, data: any) {
-        this.failures.push({ error, data });
+    addFailure(error: string, data: any, details?: any) {
+        this.failures.push({ error, data, details });
     }
 
     getFailures(): ImportFailure[] {

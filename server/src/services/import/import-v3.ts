@@ -23,6 +23,7 @@ interface ImportOptions {
 export interface ImportFailure {
     error: string;
     data: any;
+    details?: any;
 }
 
 export interface ImportError {
