@@ -231,9 +231,10 @@ const isExtensionAllowed = (ext, allowedFileTypes) => {
   return checkers.some((checker) => checker(ext));
 };
 
+// We should probably get the actual mime types, but that would require downloading the file before we can check it.
 const ALLOWED_AUDIOS = ['mp3', 'wav', 'ogg'];
-const ALLOWED_IMAGES = ['png', 'gif', 'jpg', 'jpeg', 'svg', 'bmp', 'tif', 'tiff'];
-const ALLOWED_VIDEOS = ['mp4', 'avi'];
+const ALLOWED_IMAGES = ['png', 'gif', 'jpg', 'jpeg', 'svg', 'bmp', 'tif', 'tiff', 'webp', 'heic', 'heif', 'ico'];
+const ALLOWED_VIDEOS = ['mp4', 'avi', 'webm', 'hevc', 'heifc'];
 
 /** See Strapi file allowedTypes for object keys. */
 const fileTypeCheckers = {
