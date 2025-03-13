@@ -391,8 +391,9 @@ export class ImportProcessor {
             }
 
             // Look for the target in import data first
+            logger.debug('Looking for relation in import data', context);
             if (this.context.importData[attr.target]) {
-                logger.debug('Looking for relation in import data', context);
+                logger.debug('Found target in import data', context);
                 const targetEntry = this.findEntryInImportData(
                     relationValue,
                     targetIdField,
@@ -407,7 +408,7 @@ export class ImportProcessor {
                     if (publishedIdValue && draftIdValue && publishedIdValue !== draftIdValue) {
                         // If disallowNewRelations is true, skip database lookup
                         if (this.context.options.disallowNewRelations && this.context.options.existingAction === ExistingAction.Skip) {
-                            console.log(`Skipping database lookup for relation ${attr.target}:${publishedIdValue} (disallowNewRelations is true)`);
+                            logger.debug(`Skipping database lookup for relation ${attr.target}:${publishedIdValue} (disallowNewRelations is true)`);
                             return null;
                         }
                         // If the values are different, we need to look up the published version in the database
@@ -418,9 +419,10 @@ export class ImportProcessor {
                         }
                     }
 
+                    logger.debug(`Relation type: ${attr.relation}`);
                     // Process the entry if it's a oneWay/manyWay relation
                     if (attr.relation === 'oneWay' || attr.relation === 'manyWay') {
-                        console.log(`Processing related entry from import data: ${attr.target} ${relationValue}`);
+                        logger.debug(`Processing related entry from import data: ${attr.target} ${relationValue}`);
                         return await this.processEntry(
                             attr.target,
                             targetEntry,
@@ -429,11 +431,13 @@ export class ImportProcessor {
                         );
                     }
                 }
+            } else {
+                logger.debug('No target in import data', context);
             }
 
             // If disallowNewRelations is true, skip database lookup
             if (this.context.options.disallowNewRelations && this.context.options.existingAction === ExistingAction.Skip) {
-                console.log(`Skipping database lookup for relation ${attr.target}:${relationValue} (disallowNewRelations is true)`);
+                logger.debug(`Skipping database lookup for relation ${attr.target}:${relationValue} (disallowNewRelations is true)`);
                 return null;
             }
 

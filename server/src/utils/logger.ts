@@ -1,3 +1,5 @@
+import { getConfig } from './getConfig';
+
 export enum LogLevel {
     DEBUG = 'debug',
     INFO = 'info',
@@ -22,6 +24,8 @@ export class Logger {
     static getInstance(): Logger {
         if (!Logger.instance) {
             Logger.instance = new Logger();
+            const logLevel = Object.values(LogLevel).includes(getConfig('logLevel')) ? getConfig('logLevel') : LogLevel.INFO;
+            Logger.instance.setLogLevel(logLevel);
         }
         return Logger.instance;
     }
