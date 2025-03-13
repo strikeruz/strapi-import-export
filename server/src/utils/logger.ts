@@ -24,7 +24,8 @@ export class Logger {
     static getInstance(): Logger {
         if (!Logger.instance) {
             Logger.instance = new Logger();
-            const logLevel = Object.values(LogLevel).includes(getConfig('logLevel')) ? getConfig('logLevel') : LogLevel.INFO;
+            const logLevel = Object.values(LogLevel).includes(getConfig('logLevel')) ? getConfig('logLevel') : LogLevel.DEBUG;
+            console.log(`Setting log level to ${logLevel}`);
             Logger.instance.setLogLevel(logLevel);
         }
         return Logger.instance;
