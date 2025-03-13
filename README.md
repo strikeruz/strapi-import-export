@@ -37,6 +37,8 @@ module.exports = {
 
 ### Changelog
 
+- 0.1.8 - Changed some debug logs and tracked down bug with newer strapi version 
+          renaming relations as "oneToOne" instead of "oneWay"
 - 0.1.5 - Added support for more file extentions
 - 0.1.4 - Added details to import failures
 - 0.1.3 - Fixed UID field type being used for idField

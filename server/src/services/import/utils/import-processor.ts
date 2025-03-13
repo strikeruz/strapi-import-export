@@ -421,7 +421,7 @@ export class ImportProcessor {
 
                     logger.debug(`Relation type: ${attr.relation}`);
                     // Process the entry if it's a oneWay/manyWay relation
-                    if (attr.relation === 'oneWay' || attr.relation === 'manyWay') {
+                    if (attr.relation === 'oneWay' || attr.relation === 'manyWay' || attr.relation === 'oneToOne') {
                         logger.debug(`Processing related entry from import data: ${attr.target} ${relationValue}`);
                         return await this.processEntry(
                             attr.target,
