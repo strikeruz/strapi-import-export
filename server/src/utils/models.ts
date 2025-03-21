@@ -8,7 +8,7 @@ export function getAllSlugs({ includePluginsContentTypes = false } = {}) {
 }
 
 export function getModel(slug) {
-  return strapi.getModel(slug);
+  return strapi.getModel(slug) as Struct.ContentTypeSchema;
 }
 
 export function getModelFromSlugOrModel(modelOrSlug) {

@@ -33,7 +33,9 @@ export class ExportProcessor {
         }
 
         try {
-            validateIdField(model);
+            if (model.kind !== 'singleType') {
+                validateIdField(model);
+            }
         } catch (error) {
             logger.error('ID field validation failed', context, error);
             throw error;

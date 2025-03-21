@@ -37,13 +37,22 @@ module.exports = {
 
 ### Changelog
 
-- 0.1.8 - Changed some debug logs and tracked down bug with newer strapi version 
-          renaming relations as "oneToOne" instead of "oneWay"
-- 0.1.5 - Added support for more file extentions
-- 0.1.4 - Added details to import failures
-- 0.1.3 - Fixed UID field type being used for idField
-- 0.1.2 - Fixed relations not being processed correctly in export
-- 0.1.1 - Added JSON v3 format
+- 0.1.9 
+  - Refactor ImportModal to include showPartialSuccess in button visibility logic
+  - Update validation functions to handle singleType models appropriately
+  - Enhance logging in ImportProcessor and ImportContext for better clarity on ID field processing
+- 0.1.8
+  - Changed some debug logs and tracked down bug with newer strapi version renaming relations as "oneToOne" instead of "oneWay"
+- 0.1.5
+  - Added support for more file extentions
+- 0.1.4
+  - Added details to import failures
+- 0.1.3
+  - Fixed UID field type being used for idField
+- 0.1.2
+  - Fixed relations not being processed correctly in export
+- 0.1.1
+  - Added JSON v3 format
 
 ---
 

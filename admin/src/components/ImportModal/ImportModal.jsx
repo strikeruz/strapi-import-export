@@ -263,7 +263,7 @@ export const ImportModal = ({ onClose }) => {
   const showError = !uploadingData && uploadSuccessful === ModalState.ERROR;
 
   const showImportButton = showEditor;
-  const showRemoveFileButton = showEditor || showError;
+  const showRemoveFileButton = showEditor || showError || showPartialSuccess;
 
   return (
     <Modal.Root onClose={onClose}>

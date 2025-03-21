@@ -67,9 +67,9 @@ export default {
       //   Component: InjectedExportCollectionType,
       // });
 
-      const ExportModal = InjectedExportCollectionType;
+    const ExportModal = InjectedExportCollectionType;
 
-      app.getPlugin('content-manager').injectComponent('listView', 'actions', {
+    app.getPlugin('content-manager').injectComponent('listView', 'actions', {
       name: `${PLUGIN_ID}-export`,
       Component: ExportModal,
     });

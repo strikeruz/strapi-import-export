@@ -26,30 +26,30 @@ export class ImportContext {
         public readonly failures: ImportFailure[] = []
     ) {}
 
-    recordCreated(contentType: string, idValue: string, documentId: string) {
-        const key = `${contentType}:${idValue}`;
+    recordCreated(contentType: string, idValue: string | undefined, documentId: string) {
+        const key = `${contentType}:${idValue ?? 'SINGLE_TYPE'}`;
         this.createdDocumentIds.add(documentId);
         this.processedRecords.set(key, documentId);
-        this.processedRecordsByDocumentId.set(documentId, { contentType, idValue });
+        this.processedRecordsByDocumentId.set(documentId, { contentType, idValue: idValue ?? 'SINGLE_TYPE' });
     }
 
-    recordUpdated(contentType: string, idValue: string, documentId: string) {
-        const key = `${contentType}:${idValue}`;
+    recordUpdated(contentType: string, idValue: string | undefined, documentId: string) {
+        const key = `${contentType}:${idValue ?? 'SINGLE_TYPE'}`;
         this.updatedDocumentIds.add(documentId);
         this.processedRecords.set(key, documentId);
-        this.processedRecordsByDocumentId.set(documentId, { contentType, idValue });
+        this.processedRecordsByDocumentId.set(documentId, { contentType, idValue: idValue ?? 'SINGLE_TYPE' });
     }
 
     wasDocumentCreatedInThisImport(documentId: string): boolean {
         return this.createdDocumentIds.has(documentId);
     }
 
-    wasUpdatedInThisImport(contentType: string, idValue: string): boolean {
-        return this.updatedDocumentIds.has(`${contentType}:${idValue}`);
+    wasUpdatedInThisImport(contentType: string, idValue: string | undefined): boolean {
+        return this.updatedDocumentIds.has(`${contentType}:${idValue ?? 'SINGLE_TYPE'}`);
     }
 
     findProcessedRecord(contentType: string, idValue: any): string | undefined {
-        return this.processedRecords.get(`${contentType}:${idValue}`);
+        return this.processedRecords.get(`${contentType}:${idValue ?? 'SINGLE_TYPE'}`);
     }
 
     findProcessedRecordByDocumentId(documentId: string): ProcessedRecordInfo | undefined {

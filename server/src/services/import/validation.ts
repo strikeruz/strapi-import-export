@@ -1,4 +1,4 @@
-import { Schema, UID } from '@strapi/types';
+import { Schema, Struct, UID } from '@strapi/types';
 import { getModel, isComponentAttribute, isDynamicZoneAttribute, isRelationAttribute } from '../../utils/models';
 import { getIdentifierField } from '../../utils/identifiers';
 import { EntryVersion, LocaleVersions, ExistingAction } from './import-v3';
@@ -418,7 +418,7 @@ function attributeIsUnique(attribute: Schema.Attribute.AnyAttribute): attribute 
     return 'unique' in attribute;
 }
 
-function validateModelConfiguration(model: Schema.Schema) {
+function validateModelConfiguration(model: Struct.ContentTypeSchema) {
     // const idField = getIdentifierField(model);
     // const attribute: Schema.Attribute.AnyAttribute = model.attributes[idField];
 
@@ -439,7 +439,9 @@ function validateModelConfiguration(model: Schema.Schema) {
     //         `Current settings - required: ${!!attribute.required}, unique: ${!!attribute.unique}`
     //     );
     // }
-    validateIdField(model);
+    if (model.kind !== 'singleType') {
+        validateIdField(model);
+    }
 }
 
 function validateMediaField(

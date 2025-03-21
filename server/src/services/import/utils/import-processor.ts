@@ -28,9 +28,10 @@ export class ImportProcessor {
                 continue;
             }
 
-            const idField = getIdentifierField(model);
-            logger.debug(`Processing entries with identifier field: ${idField}`, context);
 
+            const idField: string | undefined = model.kind !== "singleType" ? getIdentifierField(model) : undefined;
+                
+            logger.debug(`Processing entries with identifier field: ${idField}`, context);
             // Import each entry's versions
             for (const entry of entries) {
                 try {
@@ -54,7 +55,7 @@ export class ImportProcessor {
         contentType: UID.ContentType,
         entry: EntryVersion,
         model: Schema.Schema,
-        idField: string
+        idField: string | undefined
     ): Promise<string | null> {
         const context = {
             operation: 'import',
@@ -93,7 +94,7 @@ export class ImportProcessor {
         options: {
             documentId?: string | null;
             status: 'draft' | 'published';
-            idField: string;
+            idField?: string | undefined;
         }
     ): Promise<string | null> {
         const context = {
@@ -115,8 +116,9 @@ export class ImportProcessor {
 
         if (!documentId) {
             // Look for existing entry
+            const filter = options.idField ? { [options.idField]: firstData[options.idField] } : {};
             const existing = await this.services.documents(contentType).findFirst({
-                filters: { [options.idField]: firstData[options.idField] },
+                filters: filter,
                 status: options.status
             });
 
@@ -178,7 +180,7 @@ export class ImportProcessor {
                             idValue: firstData[options.idField] 
                         });
                         this.context.addFailure(
-                            `Entry with ${options.idField}=${firstData[options.idField]} already exists`,
+                            `Entry with ${options.idField ?? contentType}=${firstData[options.idField] ?? 'SINGLE_TYPE'} already exists`,
                             versionData
                         );
                         return null;

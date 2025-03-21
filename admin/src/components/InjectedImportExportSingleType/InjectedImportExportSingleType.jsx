@@ -7,9 +7,10 @@ import { useIntl } from 'react-intl';
 
 import { pluginPermissions } from '../../permissions';
 import getTrad from '../../utils/getTrad';
+import { InjectedExportCollectionType } from '../InjectedExportCollectionType/InjectedExportCollectionType';
 // import { ExportModal } from '../ExportModal/ExportModal';
 // import { ExportButton } from '../ExportButton';
-// import { ImportModal } from '../ImportModal';
+import { ImportModal } from '../ImportModal/ImportModal';
 
 export const InjectedImportExportSingleType = () => {
   const { formatMessage } = useIntl();
@@ -28,6 +29,8 @@ export const InjectedImportExportSingleType = () => {
 
         <Box paddingBottom={1}>
           <Flex direction="column" gap={2}>
+            <InjectedExportCollectionType />
+            <ImportModal />
             {/* <ExportModal fullWidth  unavailableOptions={['exportPluginsContentTypes']} /> */}
             {/* <ExportButton fullWidth unavailableOptions={['exportPluginsContentTypes']} /> */}
           </Flex>
