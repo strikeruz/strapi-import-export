@@ -37,6 +37,8 @@ module.exports = {
 
 ### Changelog
 
+- 0.2.0
+  - Implement server-sent events (SSE) for import progress tracking
 - 0.1.9 
   - Refactor ImportModal to include showPartialSuccess in button visibility logic
   - Update validation functions to handle singleType models appropriately
