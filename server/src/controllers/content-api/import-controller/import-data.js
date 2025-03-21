@@ -47,23 +47,49 @@ const importData = async (ctx) => {
   }
 
   let res;
+  const importService = getService('import');
+  
   if (fileContent?.version === 3) {
-    res = await getService('import').importDataV3(fileContent, {
+    // Check if an import is already in progress
+    if (importService.isImportInProgress()) {
+      ctx.body = {
+        status: 'error',
+        message: 'An import is already in progress'
+      };
+      ctx.status = 409; // Conflict
+      return;
+    }
+    
+    // For v3 imports, use SSE for progress reporting
+    res = await importService.importDataV3(fileContent, {
       slug,
       user,
       existingAction,
       ignoreMissingRelations,
       allowLocaleUpdates,
       disallowNewRelations
-    });
+    }, { useSSE: true });
+    
+    // If the import is running in the background, return a special response
+    if (res.backgroundProcessing) {
+      console.log("Import is running in the background");
+      console.log(res);
+      ctx.body = {
+        status: 'started',
+        useSSE: true,
+      };
+      return;
+    }
   } else if (fileContent?.version === 2) {
-    res = await getService('import').importDataV2(fileContent, {
+    // Use existing import function for v2
+    res = await importService.importDataV2(fileContent, {
       slug,
       user,
       idField,
     });
   } else {
-    res = await getService('import').importData(dataRaw, {
+    // Use existing import function for v1
+    res = await importService.importData(dataRaw, {
       slug,
       format,
       user,
@@ -71,6 +97,7 @@ const importData = async (ctx) => {
     });
   }
 
+  // Standard response for completed imports
   ctx.body = {
     failures: res.failures || [],
     errors: res.errors || [],

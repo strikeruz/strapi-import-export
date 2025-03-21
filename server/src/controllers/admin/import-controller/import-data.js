@@ -21,6 +21,7 @@ async function importData(ctx) {
     allowLocaleUpdates,
     disallowNewRelations
   } = data;
+  
   let fileContent;
   try {
     fileContent = await getService('import').parseInputData(format, dataRaw, { slug });
@@ -37,24 +38,47 @@ async function importData(ctx) {
     return;
   }
 
+  // Check for ongoing imports for v3 only (which supports SSE)
+  const importService = getService('import');
+  if (fileContent?.version === 3 && importService.isImportInProgress()) {
+    ctx.body = {
+      status: 'error',
+      message: 'An import is already in progress'
+    };
+    ctx.status = 409; // Conflict
+    return;
+  }
+
   let res;
   if (fileContent?.version === 3) {
-    res = await getService('import').importDataV3(fileContent, {
+    // For v3 imports, use SSE for progress reporting
+    res = await importService.importDataV3(fileContent, {
       slug,
       user,
       existingAction,
       ignoreMissingRelations,
       allowLocaleUpdates,
       disallowNewRelations
-    });
+    }, { useSSE: true });
+    
+    // If the import is running in the background, return a special response
+    if (res.backgroundProcessing) {
+      ctx.body = {
+        status: 'started',
+        useSSE: true,
+      };
+      return;
+    }
   } else if (fileContent?.version === 2) {
-    res = await getService('import').importDataV2(fileContent, {
+    // Use existing import function for v2
+    res = await importService.importDataV2(fileContent, {
       slug,
       user,
       idField,
     });
   } else {
-    res = await getService('import').importData(dataRaw, {
+    // Use existing import function for v1
+    res = await importService.importData(dataRaw, {
       slug,
       format,
       user,
@@ -62,8 +86,7 @@ async function importData(ctx) {
     });
   }
 
-  // console.log('res', JSON.stringify(res, null, 2));
-
+  // Standard response for completed imports
   ctx.body = {
     failures: res.failures || [],
     errors: res.errors || [],

@@ -9,5 +9,13 @@ export default {
         policies: [],
       },
     },
+    {
+      method: 'GET',
+      path: '/content/import/progress',
+      handler: 'import.importSSE',
+      config: {
+        policies: [],
+      },
+    },
   ],
 };

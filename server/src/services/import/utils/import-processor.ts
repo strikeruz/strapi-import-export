@@ -7,19 +7,52 @@ import { findOrImportFile } from '../utils/file';
 import { logger } from '../../../utils/logger';
 
 export class ImportProcessor {
+    private context: ImportContext;
+    private onProgress?: (progress: number, message: string) => void;
+    private services: {
+        documents: typeof strapi.documents;
+    };
+    private totalEntries: number = 0;
+    private processedEntries: number = 0;
+
     constructor(
-        private context: ImportContext,
-        private services: {
+        context: ImportContext,
+        services: {
             documents: typeof strapi.documents;
-        }
-    ) {}
+        },
+        onProgress?: (progress: number, message: string) => void
+    ) {
+        this.context = context;
+        this.services = services;
+        this.onProgress = onProgress;
+    }
 
     async process(): Promise<ImportResult> {
+        // Calculate total entries for progress reporting
+        this.totalEntries = Object.values(this.context.importData).reduce(
+            (count, entries) => count + entries.length, 
+            0
+        );
+        
+        this.processedEntries = 0;
+        
+        // Report initial progress
+        this.reportProgress(0, `Starting import of ${this.totalEntries} entries`);
+        
+        let contentTypeIndex = 0;
+        const totalContentTypes = Object.keys(this.context.importData).length;
+
         for (const [contentType, entries] of Object.entries(this.context.importData) as [UID.ContentType, EntryVersion[]][]) {
             const context = {
                 operation: 'import',
                 contentType
             };
+
+            contentTypeIndex++;
+            this.reportProgress(
+                contentTypeIndex / totalContentTypes * 0.1, // First 10% is for content type initialization
+                `Processing content type ${contentType} (${contentTypeIndex}/${totalContentTypes})`
+            );
 
             const model = getModel(contentType);
             if (!model) {
@@ -28,12 +61,19 @@ export class ImportProcessor {
                 continue;
             }
 
-
             const idField: string | undefined = model.kind !== "singleType" ? getIdentifierField(model) : undefined;
                 
             logger.debug(`Processing entries with identifier field: ${idField}`, context);
+            
             // Import each entry's versions
+            let entryIndex = 0;
             for (const entry of entries) {
+                entryIndex++;
+                this.reportProgress(
+                    0.1 + (this.processedEntries / this.totalEntries * 0.9), // Remaining 90% is for entry processing
+                    `Processing entry ${entryIndex}/${entries.length} for ${contentType}`
+                );
+                
                 try {
                     await this.processEntry(contentType, entry, model, idField);
                 } catch (error) {
@@ -45,10 +85,27 @@ export class ImportProcessor {
                         this.context.addFailure(error.message || 'Unknown error', entry);
                     }
                 }
+                
+                this.processedEntries++;
+                this.reportProgress(
+                    0.1 + (this.processedEntries / this.totalEntries * 0.9),
+                    `Processed ${this.processedEntries}/${this.totalEntries} entries`
+                );
             }
         }
 
+        // Report completion
+        this.reportProgress(1, `Import complete. Processed ${this.processedEntries} entries.`);
+
         return { failures: this.context.getFailures() };
+    }
+
+    private reportProgress(progress: number, message: string): void {
+        if (this.onProgress) {
+            // Make sure progress is between 0 and 1
+            const normalizedProgress = Math.min(Math.max(progress, 0), 1);
+            this.onProgress(normalizedProgress, message);
+        }
     }
 
     private async processEntry(

@@ -1,12 +1,14 @@
 import { Modal, Button, Typography, Flex, Box, Loader, Accordion, Tabs } from '@strapi/design-system';
 import { CheckCircle, Code as IconCode, File as IconFile, Upload, CrossCircle, WarningCircle } from '@strapi/icons';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useIntl } from 'react-intl';
 import styled from 'styled-components'; // Correct import for styled
 import { useFetchClient } from '@strapi/admin/strapi-admin';
-import {PLUGIN_ID} from '../../pluginId'
+import { PLUGIN_ID } from '../../pluginId'
+// import { EventSourcePolyfill } from 'event-source-polyfill';  // Alternative import for EventSource
+import { EventSource } from 'eventsource';
 // Styled components
 const Label = styled.label`
   --hover-color: hsl(210, 100%, 50%);
@@ -101,6 +103,10 @@ export const ImportModal = ({ onClose }) => {
   const [importFailuresContent, setImportFailuresContent] = useState('');
   const [importErrorsContent, setImportErrorsContent] = useState('');
   const [parsedData, setParsedData] = useState(null);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStatus, setImportStatus] = useState('idle');
+  const [importMessage, setImportMessage] = useState('');
+  const [sseConnection, setSseConnection] = useState(null);
 
   const handleDataChanged = (newData) => {
     try {
@@ -155,20 +161,160 @@ export const ImportModal = ({ onClose }) => {
 
   const fetchClient = useFetchClient(); // Use the hook here within the component
 
+  const connectToSSE = () => {
+    const token = JSON.parse(
+      localStorage.getItem('jwtToken') ?? sessionStorage.getItem('jwtToken') ?? '""'
+    );
+
+    const backendURL = window.strapi.backendURL;
+
+    const addPrependingSlash = (url) => (url.charAt(0) !== '/' ? `/${url}` : url);
+
+    // This regular expression matches a string that starts with either "http://" or "https://" or any other protocol name in lower case letters, followed by "://" and ends with anything else
+    const hasProtocol = (url) => new RegExp('^(?:[a-z+]+:)?//', 'i').test(url);
+
+    // Check if the url has a prepending slash, if not add a slash
+    const normalizeUrl = (url) => (hasProtocol(url) ? url : addPrependingSlash(url));
+
+    const addBaseUrl = (url) => {
+      return `${backendURL}${url}`;
+    };
+
+    const url = normalizeUrl(`/${PLUGIN_ID}/import/progress`);
+    const fullUrl = addBaseUrl(url);
+    
+    // Close any existing connection
+    if (sseConnection) {
+      console.log("Closing existing SSE connection");
+      sseConnection.close();
+    }
+
+    // Create an EventSource with headers
+    const eventSource = new EventSource(fullUrl, {
+      fetch: (input, init) => fetch(input, {
+        ...init,
+        headers: {
+          ...init.headers,
+          'Authorization': `Bearer ${token}`
+        }
+      })
+    });
+
+    eventSource.addEventListener('connected', (e) => {
+      console.log('SSE connected:', e.data);
+    });
+
+    eventSource.addEventListener('status', (e) => {
+      const data = JSON.parse(e.data);
+      setImportStatus(data.status);
+      setImportMessage(data.message || '');
+      if (data.progress !== undefined) {
+        setImportProgress(data.progress);
+      }
+
+      // Keep the uploading state active while we're processing
+      if (data.status === 'processing' || data.status === 'validating') {
+        setUploadingData(true);
+      }
+    });
+
+    eventSource.addEventListener('complete', (e) => {
+      const result = JSON.parse(e.data);
+      setUploadingData(false);
+
+      if (!result.failures?.length && !result.errors?.length) {
+        setUploadSuccessful(ModalState.SUCCESS);
+        notify(
+          i18n('plugin.message.import.success.imported.title'),
+          i18n('plugin.message.import.success.imported.message'),
+          'success'
+        );
+        refreshView();
+      }
+      else if (result.failures?.length) {
+        setUploadSuccessful(ModalState.PARTIAL);
+        setImportFailuresContent(JSON.stringify(result.failures, null, '\t'));
+        notify(
+          i18n('plugin.message.import.error.imported-partial.title'),
+          i18n('plugin.message.import.error.imported-partial.message'),
+          'danger'
+        );
+      }
+      else if (result.errors?.length) {
+        setUploadSuccessful(ModalState.ERROR);
+        setImportErrorsContent(JSON.stringify(result.errors, null, '\t'));
+      }
+    });
+
+    eventSource.addEventListener('error', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        console.error('Import error:', data);
+        setUploadingData(false);
+        setUploadSuccessful(ModalState.ERROR);
+        setImportErrorsContent(JSON.stringify([{
+          error: data.message,
+          data: { entry: {}, path: '' }
+        }], null, '\t'));
+      } catch (err) {
+        // If e.data isn't valid JSON, it's a connection error
+        console.error('SSE error event (not JSON):', e);
+      }
+    });
+
+    eventSource.addEventListener('close', () => {
+      eventSource.close();
+      setSseConnection(null);
+    });
+
+    eventSource.onerror = (e) => {
+      console.error('SSE connection error:', e);
+      if (importStatus === 'processing' || importStatus === 'validating') {
+        // Only show an error if we were in the middle of processing
+        setUploadingData(false);
+        setUploadSuccessful(ModalState.ERROR);
+        setImportErrorsContent(JSON.stringify([{
+          error: 'SSE connection error',
+          data: { entry: {}, path: '' }
+        }], null, '\t'));
+      }
+
+      eventSource.close();
+      setSseConnection(null);
+    };
+
+    setSseConnection(eventSource);
+  };
+
   const uploadData = async () => {
     setUploadingData(true);
     try {
       const { post } = fetchClient;
       const res = await post(`/${PLUGIN_ID}/import`, {
-        // body: JSON.stringify({ slug, data, format: dataFormat, ...options }),
-        data:{ slug, data, format: dataFormat, ...options },
-        // headers: {
-        //   'Content-Type': 'application/json',
-        // },
+        data: { slug, data, format: dataFormat, ...options },
       });
 
+      if (res.data.status === 'error') {
+        // Handle error response
+        notify(
+          i18n('plugin.message.import.error.unexpected.title'),
+          res.data.message,
+          'danger'
+        );
+        setUploadingData(false);
+        return;
+      }
+
+      if (res.data.status === 'started' && res.data.useSSE) {
+        // This is a background job using SSE
+        console.log("Should connect to SSE");
+        connectToSSE();
+        return;
+      }
+
+      // Handle normal/synchronous response
       const { failures, errors } = res.data;
-      console.log('res', JSON.stringify(res, null, 2));
+
       if (!failures?.length && !errors?.length) {
         setUploadSuccessful(ModalState.SUCCESS);
         notify(
@@ -191,13 +337,22 @@ export const ImportModal = ({ onClose }) => {
         setUploadSuccessful(ModalState.ERROR);
         setImportErrorsContent(JSON.stringify(errors, null, '\t'));
       }
+
+      setUploadingData(false);
     } catch (err) {
       console.log('err', err);
+
       handleRequestErr(err, {
         403: () =>
           notify(
             i18n('plugin.message.import.error.forbidden.title'),
             i18n('plugin.message.import.error.forbidden.message'),
+            'danger'
+          ),
+        409: () =>
+          notify(
+            'Import in progress',
+            'Another import is already in progress. Please wait for it to complete.',
             'danger'
           ),
         413: () =>
@@ -213,7 +368,6 @@ export const ImportModal = ({ onClose }) => {
             'danger'
           ),
       });
-    } finally {
       setUploadingData(false);
     }
   };
@@ -265,6 +419,15 @@ export const ImportModal = ({ onClose }) => {
   const showImportButton = showEditor;
   const showRemoveFileButton = showEditor || showError || showPartialSuccess;
 
+  // Clean up SSE connection when component unmounts
+  useEffect(() => {
+    return () => {
+      if (sseConnection) {
+        sseConnection.close();
+      }
+    };
+  }, [sseConnection]);
+
   return (
     <Modal.Root onClose={onClose}>
       <Modal.Trigger>
@@ -281,11 +444,11 @@ export const ImportModal = ({ onClose }) => {
         <Modal.Body>
           {showFileDragAndDrop && (
             <>
-            <div style={{ marginBottom: '24px' }}>
-              <Typography variant="beta" textColor="neutral800">
-                {i18n('plugin.import.data-source-step.title')}
-              </Typography>
-            </div>
+              <div style={{ marginBottom: '24px' }}>
+                <Typography variant="beta" textColor="neutral800">
+                  {i18n('plugin.import.data-source-step.title')}
+                </Typography>
+              </div>
               <Flex gap={4}>
                 <DragOverLabel
                   className={`plugin-ie-import_modal_label ${labelClassNames}`}
@@ -315,12 +478,32 @@ export const ImportModal = ({ onClose }) => {
           )}
           {showLoader && (
             <>
-              <Flex justifyContent="center">
-                <Loader>{i18n('plugin.import.importing-data')}</Loader>
+              <Flex justifyContent="center" direction="column" alignItems="center" gap={4}>
+                <Typography variant="beta">
+                  {importMessage || i18n('plugin.import.importing-data')}
+                </Typography>
+                <Loader>{`${Math.round(importProgress)}%`}</Loader>
+                <Box width="100%" padding={4}>
+                  <div style={{
+                    width: '100%',
+                    height: '8px',
+                    backgroundColor: '#f0f0f0',
+                    borderRadius: '4px',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      width: `${importProgress}%`,
+                      height: '100%',
+                      backgroundColor: '#4945ff',
+                      borderRadius: '4px',
+                      transition: 'width 0.3s ease-in-out'
+                    }} />
+                  </div>
+                </Box>
               </Flex>
             </>
           )}
-          {showEditor && <ImportEditor 
+          {showEditor && <ImportEditor
             file={file}
             data={data}
             dataFormat={dataFormat}

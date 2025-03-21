@@ -17,5 +17,13 @@ export default {
         policies: [],
       },
     },
+    {
+      method: 'GET',
+      path: '/import/progress',
+      handler: 'importAdmin.importSSE',
+      config: {
+        policies: [],
+      },
+    },
   ],
 };
