@@ -1,9 +1,9 @@
 import { getService } from '../../../utils/utils.js';
 
 const importSSE = async (ctx) => {
-  console.log('SSE request received:', 
-    JSON.stringify(ctx, null, 2)
-  );
+//   console.log('SSE request received:', 
+//     JSON.stringify(ctx, null, 2)
+//   );
   
   // Explicitly set status to 200 OK
   ctx.status = 200;

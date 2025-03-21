@@ -72,8 +72,8 @@ const importData = async (ctx) => {
     
     // If the import is running in the background, return a special response
     if (res.backgroundProcessing) {
-      console.log("Import is running in the background");
-      console.log(res);
+      // console.log("Import is running in the background");
+      // console.log(res);
       ctx.body = {
         status: 'started',
         useSSE: true,

@@ -8,22 +8,18 @@ import { sseManager } from './sse-manager';
 let importInProgress = false;
 
 const isImportInProgress = () => {
-  console.log("isImportInProgress", importInProgress);
   return importInProgress;
 };
 
 const setImportInProgress = (status) => {
-  console.log("setImportInProgress", status);
   importInProgress = status;
 };
 
 const setSSEClient = (client) => {
-  console.log("setSSEClient", client);
   sseManager.setClient(client);
 };
 
 const clearSSEClient = () => {
-  console.log("clearSSEClient");
   sseManager.clearClient();
 };
 

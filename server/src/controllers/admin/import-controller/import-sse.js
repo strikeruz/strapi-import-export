@@ -5,9 +5,9 @@ const importSSE = async (ctx) => {
     //   if (!hasPermissions(ctx)) {
     //     return ctx.forbidden();
     //   }
-    console.log('SSE request received:',
-        JSON.stringify(ctx, null, 2)
-    );
+    // console.log('SSE request received:',
+    //     JSON.stringify(ctx, null, 2)
+    // );
 
     // Explicitly set status to 200 OK
     ctx.status = 200;

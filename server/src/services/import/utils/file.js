@@ -9,7 +9,6 @@ import fetch from 'node-fetch';
 import { isObjectSafe } from '../../../../libs/objects.js';
 
 async function findOrImportFile(fileEntry, user, { allowedFileTypes }) {
-  console.log('findOrImportFile', fileEntry);
   let obj = {};
   if (typeof fileEntry === 'string') {
     obj.url = fileEntry;
@@ -18,16 +17,13 @@ async function findOrImportFile(fileEntry, user, { allowedFileTypes }) {
   } else {
     throw new Error(`Invalid data format '${typeof fileEntry}' to import media. Only 'string', 'number', 'object' are accepted.`);
   }
-  console.log('findOrImportFile object:', JSON.stringify(obj, null, 2));
 
   // First try to find file with existing hash or name
   let file = await findFile(obj, user, allowedFileTypes);
   if (file) {
-    console.log('Found file using existing hash/name');
     if (isExtensionAllowed(file.ext.substring(1), allowedFileTypes)) {
       return file;
     }
-    console.log('Found file has disallowed extension');
     return null;
   }
 
@@ -35,7 +31,6 @@ async function findOrImportFile(fileEntry, user, { allowedFileTypes }) {
   if (obj.url) {
     // Check if URL is absolute
     const isAbsoluteUrl = obj.url.startsWith('http://') || obj.url.startsWith('https://');
-    console.log('URL is absolute:', isAbsoluteUrl);
 
     if (isAbsoluteUrl) {
       const fileData = getFileDataFromRawUrl(obj.url);
@@ -104,7 +99,7 @@ const importFile = async ({ url, name, alternativeText, caption }, user) => {
   let file;
   try {
     file = await fetchFile(url);
-    console.log('importFile', JSON.stringify(file, null, 2));
+    // console.log('importFile', JSON.stringify(file, null, 2));
 
     // let [uploadedFile] = await strapi
     //   .plugin('upload')
@@ -163,7 +158,7 @@ const importFile = async ({ url, name, alternativeText, caption }, user) => {
 };
 
 const fetchFile = async (url) => {
-  console.log('fetchFile', url);
+  // console.log('fetchFile', url);
   try {
     const response = await fetch(url);
     const contentType = response.headers.get('content-type')?.split(';')?.[0] || '';
@@ -254,7 +249,7 @@ const getFileTypeChecker = (type) => {
 };
 
 const getFileDataFromRawUrl = (rawUrl) => {
-  console.log('getFileDataFromRawUrl', rawUrl);
+  // console.log('getFileDataFromRawUrl', rawUrl);
   const parsedUrl = new URL(decodeURIComponent(rawUrl));
 
   const name = trim(parsedUrl.pathname, '/').replace(/\//g, '-');

@@ -36,10 +36,10 @@ const exportData = async (ctx) => {
   } = checkParams(bodySchema, ctx.request.body);
 
   let data;
-  console.log('exportFormat', exportFormat);
+  // console.log('exportFormat', exportFormat);
   try {
     if (exportFormat === 'json-v3') {
-      console.log('exportDataV3');
+      // console.log('exportDataV3');
       data = await getService('export').exportDataV3({ 
         slug, 
         search, 
@@ -53,10 +53,10 @@ const exportData = async (ctx) => {
         deepPopulateComponentRelations
       });
     } else if (exportFormat === 'json-v2') {
-      console.log('exportDataV2');
+      // console.log('exportDataV2');
       data = await getService('export').exportDataV2({ slug, search, applySearch, deepness, exportPluginsContentTypes });
     } else {
-      console.log('exportData');
+      // console.log('exportData');
       data = await getService('export').exportData({ slug, search, applySearch, exportFormat, relationsAsId, deepness });
     }
 
