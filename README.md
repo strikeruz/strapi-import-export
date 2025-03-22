@@ -37,6 +37,8 @@ module.exports = {
 
 ### Changelog
 
+- 0.2.1
+  - Fixed page refreash logic on import
 - 0.2.0
   - Implement server-sent events (SSE) for import progress tracking
 - 0.1.9 

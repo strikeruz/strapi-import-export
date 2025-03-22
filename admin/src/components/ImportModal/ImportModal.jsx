@@ -9,6 +9,9 @@ import { useFetchClient } from '@strapi/admin/strapi-admin';
 import { PLUGIN_ID } from '../../pluginId'
 // import { EventSourcePolyfill } from 'event-source-polyfill';  // Alternative import for EventSource
 import { EventSource } from 'eventsource';
+
+import { adminApi } from '@strapi/admin/strapi-admin';
+import { useDispatch } from 'react-redux';
 // Styled components
 const Label = styled.label`
   --hover-color: hsl(210, 100%, 50%);
@@ -107,6 +110,8 @@ export const ImportModal = ({ onClose }) => {
   const [importStatus, setImportStatus] = useState('idle');
   const [importMessage, setImportMessage] = useState('');
   const [sseConnection, setSseConnection] = useState(null);
+
+  const dispatch = useDispatch();
 
   const handleDataChanged = (newData) => {
     try {
@@ -373,8 +378,13 @@ export const ImportModal = ({ onClose }) => {
   };
 
   const refreshView = () => {
-    navigate('/tmp');
-    navigate(-1);
+    dispatch(adminApi.util.invalidateTags([
+      'Document',
+      'HistoryVersion',
+      'Relations',
+      'UidAvailability',
+      'RecentDocumentList',
+    ]));
   };
 
   const handleDragOver = (e) => {
