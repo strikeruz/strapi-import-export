@@ -1,6 +1,6 @@
 {
   "name": "strapi-import-export-v3",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Import export for strapi 5 (V3 fork)",
   "keywords": [],
   "license": "MIT",

@@ -37,6 +37,8 @@ module.exports = {
 
 ### Changelog
 
+- 0.2.3
+  - Hotfix for token not being sent in headers
 - 0.2.2
   - Trying to fix a random dependancy error than only occurs occationally on some install but not other. I don't actually know if this will fix it.
 - 0.2.1

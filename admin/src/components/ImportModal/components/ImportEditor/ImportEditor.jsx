@@ -38,8 +38,12 @@ export const ImportEditor = ({
     const fetchAttributeNames = async () => {
       const { get } = fetchClient;
       console.log('slug', slug);
+      // For some reason, strapi isn't sending the token in the headers, so we need to add it manually
+      const token = JSON.parse(
+        localStorage.getItem('jwtToken') ?? sessionStorage.getItem('jwtToken') ?? '""'
+      );
       try {
-        const resData = await get(`/${PLUGIN_ID}/import/model-attributes/${slug}`);
+        const resData = await get(`/${PLUGIN_ID}/import/model-attributes/${slug}`, { headers: { 'Authorization': `Bearer ${token}` }});
         console.log('resData', resData);
         setAttributeNames(resData?.data?.data?.attribute_names);
       } catch (error) {

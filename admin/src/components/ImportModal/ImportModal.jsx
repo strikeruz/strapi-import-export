@@ -292,12 +292,16 @@ export const ImportModal = ({ onClose }) => {
   };
 
   const uploadData = async () => {
+    // For some reason, strapi isn't sending the token in the headers, so we need to add it manually
+    const token = JSON.parse(
+      localStorage.getItem('jwtToken') ?? sessionStorage.getItem('jwtToken') ?? '""'
+    );
     setUploadingData(true);
     try {
       const { post } = fetchClient;
       const res = await post(`/${PLUGIN_ID}/import`, {
         data: { slug, data, format: dataFormat, ...options },
-      });
+      }, { headers: { 'Authorization': `Bearer ${token}` }});
 
       if (res.data.status === 'error') {
         // Handle error response
