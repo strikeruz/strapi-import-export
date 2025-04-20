@@ -164,12 +164,44 @@ export const ImportModal = ({ onClose }) => {
     setFile({});
   };
 
+  // Ha, Strapi only stores the token in localStorage when you check "Remember me" in the login form.
+  // It looks like it uses sessionStorage when you are running in dev mode instead of using cookies.
+  // Or maybe it has something to do with local IPs.
+  // But I still don't know why it isn't reading from the cookies in production, so I am reimplementing the function here.
+  // Unfortunately, in all my testing, I can NOT read cookies from the browser in production. I don't know why.
+  const getCookieValue = (name) => {
+    let result = null;
+    const cookieArray = document.cookie.split(';');
+    cookieArray.forEach((cookie) => {
+      console.log('cookie', cookie);
+      const [key, value] = cookie.split('=').map((item) => item.trim());
+      if (key === name) {
+        result = decodeURIComponent(value);
+      }
+    });
+    return result;
+  };
+
+  const getToken = () => {
+    const fromLocalStorage = localStorage.getItem('jwtToken');
+    if (fromLocalStorage) {
+      return JSON.parse(fromLocalStorage);
+    }
+    const fromSessionStorage = sessionStorage.getItem('jwtToken');
+    if (fromSessionStorage) {
+      return JSON.parse(fromSessionStorage);
+    }
+  
+    const fromCookie = getCookieValue('jwtToken');
+    return fromCookie ?? null;
+  };
+
   const fetchClient = useFetchClient(); // Use the hook here within the component
 
   const connectToSSE = () => {
-    const token = JSON.parse(
-      localStorage.getItem('jwtToken') ?? sessionStorage.getItem('jwtToken') ?? '""'
-    );
+    // const token = JSON.parse(
+    //   localStorage.getItem('jwtToken') ?? sessionStorage.getItem('jwtToken') ?? '""'
+    // );
 
     const backendURL = window.strapi.backendURL;
 
@@ -200,7 +232,7 @@ export const ImportModal = ({ onClose }) => {
         ...init,
         headers: {
           ...init.headers,
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${getToken()}`
         }
       })
     });
@@ -293,15 +325,12 @@ export const ImportModal = ({ onClose }) => {
 
   const uploadData = async () => {
     // For some reason, strapi isn't sending the token in the headers, so we need to add it manually
-    const token = JSON.parse(
-      localStorage.getItem('jwtToken') ?? sessionStorage.getItem('jwtToken') ?? '""'
-    );
     setUploadingData(true);
     try {
       const { post } = fetchClient;
       const res = await post(`/${PLUGIN_ID}/import`, {
         data: { slug, data, format: dataFormat, ...options },
-      }, { headers: { 'Authorization': `Bearer ${token}` }});
+      }, { headers: { 'Authorization': `Bearer ${getToken()}` }});
 
       if (res.data.status === 'error') {
         // Handle error response

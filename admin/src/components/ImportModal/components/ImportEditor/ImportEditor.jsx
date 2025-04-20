@@ -28,6 +28,34 @@ export const ImportEditor = ({
     disallowNewRelations: false,
   });
 
+  const getCookieValue = (name) => {
+    let result = null;
+    const cookieArray = document.cookie.split(';');
+    console.log('cookieArray', cookieArray);
+    cookieArray.forEach((cookie) => {
+      console.log('cookie', cookie);
+      const [key, value] = cookie.split('=').map((item) => item.trim());
+      if (key === name) {
+        result = decodeURIComponent(value);
+      }
+    });
+    return result;
+  };
+
+  const getToken = () => {
+    const fromLocalStorage = localStorage.getItem('jwtToken');
+    if (fromLocalStorage) {
+      return JSON.parse(fromLocalStorage);
+    }
+    const fromSessionStorage = sessionStorage.getItem('jwtToken');
+    if (fromSessionStorage) {
+      return JSON.parse(fromSessionStorage);
+    }
+  
+    const fromCookie = getCookieValue('jwtToken');
+    return fromCookie ?? null;
+  };
+
   useEffect(() => {
     if (options.existingAction === 'skip') {
       setOption('disallowNewRelations', true);
@@ -38,12 +66,8 @@ export const ImportEditor = ({
     const fetchAttributeNames = async () => {
       const { get } = fetchClient;
       console.log('slug', slug);
-      // For some reason, strapi isn't sending the token in the headers, so we need to add it manually
-      const token = JSON.parse(
-        localStorage.getItem('jwtToken') ?? sessionStorage.getItem('jwtToken') ?? '""'
-      );
       try {
-        const resData = await get(`/${PLUGIN_ID}/import/model-attributes/${slug}`, { headers: { 'Authorization': `Bearer ${token}` }});
+        const resData = await get(`/${PLUGIN_ID}/import/model-attributes/${slug}`, { headers: { 'Authorization': `Bearer ${getToken()}` }});
         console.log('resData', resData);
         setAttributeNames(resData?.data?.data?.attribute_names);
       } catch (error) {

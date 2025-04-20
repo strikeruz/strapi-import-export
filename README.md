@@ -37,6 +37,8 @@ module.exports = {
 
 ### Changelog
 
+- 0.2.4
+  - Hotfix for token not being sent in headers, still...
 - 0.2.3
   - Hotfix for token not being sent in headers
 - 0.2.2
