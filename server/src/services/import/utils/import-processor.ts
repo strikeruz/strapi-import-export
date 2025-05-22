@@ -662,26 +662,62 @@ export class ImportProcessor {
     }
 
     private findEntryInImportData(
-        relationValue: any,
-        targetIdField: string,
-        targetEntries: EntryVersion[]
+      relationValue: any,
+      targetIdField: string,
+      targetEntries: EntryVersion[]
     ): EntryVersion | null {
         return targetEntries.find(entry => {
             // Check draft version first as it might be the intended target
             if (entry.draft) {
-                const draftMatch = Object.values(entry.draft).some(
-                    localeData => localeData[targetIdField] === relationValue
-                );
+                const draftMatch = this.searchInLocaleData(entry.draft, targetIdField, relationValue);
                 if (draftMatch) return true;
             }
             // Then check published version
             if (entry.published) {
-                return Object.values(entry.published).some(
-                    localeData => localeData[targetIdField] === relationValue
-                );
+                return this.searchInLocaleData(entry.published, targetIdField, relationValue);
             }
             return false;
         }) || null;
+    }
+
+    private searchInLocaleData(
+        localeDataMap: Record<string, any>,
+        targetIdField: string,
+        relationValue: any
+    ): boolean {
+        return Object.values(localeDataMap).some(localeData => 
+            this.searchInObject(localeData, targetIdField, relationValue)
+        );
+    }
+    
+    private searchInObject(obj: any, targetIdField: string, relationValue: any): boolean {
+        if (!obj || typeof obj !== 'object') {
+            return false;
+        }
+    
+        // Check direct field match
+        if (obj[targetIdField] === relationValue) {
+            return true;
+        }
+    
+        // Recursively search in nested objects and arrays
+        for (const value of Object.values(obj)) {
+            if (Array.isArray(value)) {
+                // Search in arrays (like dynamicZone, tabs, etc.)
+                for (const item of value) {
+                    if (this.searchInObject(item, targetIdField, relationValue)) {
+                        return true;
+                    }
+                }
+            } else if (value && typeof value === 'object') {
+                // Search in nested objects (like components)
+                if (this.searchInObject(value, targetIdField, relationValue)) {
+                    return true;
+                }
+            }
+        }
+    
+        return false;
     }
 
     private sanitizeData(data: any, model: Schema.Schema): any {
