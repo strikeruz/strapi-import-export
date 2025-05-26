@@ -5,7 +5,6 @@ import last from 'lodash/last';
 import trim from 'lodash/trim';
 import os from 'os';
 import path from 'path';
-import fetch from 'node-fetch';
 import { isObjectSafe } from '../../../../libs/objects.js';
 
 async function findOrImportFile(fileEntry, user, { allowedFileTypes }) {
@@ -178,7 +177,8 @@ const fetchFile = async (url) => {
     const response = await fetch(url);
     const contentType = response.headers.get('content-type')?.split(';')?.[0] || '';
     const contentLength = parseInt(response.headers.get('content-length') || '0', 10) || 0;
-    const buffer = await response.buffer();
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
     const fileData = getFileDataFromRawUrl(url);
     const filePath = await writeFile(fileData.name, buffer);
     return {
