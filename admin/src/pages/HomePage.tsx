@@ -1,5 +1,15 @@
 //@ts-nocheck
-import { Box, Checkbox, Flex, Link, Option, Select, Typography, Modal, Button } from '@strapi/design-system';
+import {
+  Box,
+  Checkbox,
+  Flex,
+  Link,
+  Option,
+  Select,
+  Typography,
+  Modal,
+  Button,
+} from '@strapi/design-system';
 import { Download } from '@strapi/icons';
 
 import React, { memo, useState } from 'react';
@@ -9,7 +19,11 @@ import { Main } from '@strapi/design-system';
 import { useIntl } from 'react-intl';
 import { Header } from '../components/Header';
 import { ImportModal } from '../components/ImportModal/ImportModal';
-import { ExportModalContent, useExportModal, ExportModalFooter }  from '../components/ExportModal/ExportModal';
+import {
+  ExportModalContent,
+  useExportModal,
+  ExportModalFooter,
+} from '../components/ExportModal/ExportModal';
 import Preferences from '../components/Preferences/Preferences';
 import About from '../components/About/About';
 import { getTranslation } from '../utils/getTranslation';
@@ -20,17 +34,11 @@ const HomePage = () => {
   const { formatMessage } = useIntl();
   const { i18n } = useI18n();
 
-
   const state = useExportModal({ unavailableOptions: ['exportPluginsContentTypes'] });
-
-
-
-
-
 
   return (
     <>
-    {/* mango */}
+      {/* mango */}
       <Main>
         <Box padding={6} paddingTop={3}>
           <Header />
@@ -43,12 +51,15 @@ const HomePage = () => {
               hasRadius={true}
             >
               <Flex direction="column" alignItems="start" gap={6}>
-                <Flex direction="column" alignItems="start" gap={0}>  
+                <Flex direction="column" alignItems="start" gap={0}>
                   <Typography variant="alpha">
                     {i18n('plugin.page.homepage.section.quick-actions.title', 'Global Actions')}
                   </Typography>
                   <Typography variant="epsilon">
-                    {i18n('plugin.page.homepage.section.quick-actions.description', 'Import and export data from all your content types at once.')}
+                    {i18n(
+                      'plugin.page.homepage.section.quick-actions.description',
+                      'Import and export data from all your content types at once.'
+                    )}
                   </Typography>
                 </Flex>
                 <Box>
@@ -57,30 +68,39 @@ const HomePage = () => {
                       <ImportModal />
                       <Modal.Root onOpenChange={state.handleOpenChange}>
                         <Modal.Trigger>
-                          <Button startIcon={<Download />}>{i18n('plugin.cta.export', 'Export')}</Button>
+                          <Button startIcon={<Download />}>
+                            {i18n('plugin.cta.export', 'Export')}
+                          </Button>
                         </Modal.Trigger>
                         {state.isOpen && (
-                        <Modal.Content>
-                          <Modal.Header>
-                            <Modal.Title>
-                              <Flex gap={2}>
-                                <Typography fontWeight="bold" textColor="neutral800" tag="h2" id="title">
-                                  {i18n('plugin.cta.export', 'Export')}
-                                </Typography>
-                                <Typography textColor="neutral800" tag="h2" id="title">
-                                  {state.isSlugWholeDb ? i18n('plugin.export.whole-database', 'Whole database') : state.slug}
-                                </Typography>
-                              </Flex>
-                            </Modal.Title>
-                          </Modal.Header>
-                          <Modal.Body>
-                            <ExportModalContent state={state} />
-                          </Modal.Body>
-                          <Modal.Footer>
-                            <ExportModalFooter state={state} />
-                          </Modal.Footer>
-                        </Modal.Content>
-                      )}
+                          <Modal.Content>
+                            <Modal.Header>
+                              <Modal.Title>
+                                <Flex gap={2}>
+                                  <Typography
+                                    fontWeight="bold"
+                                    textColor="neutral800"
+                                    tag="h2"
+                                    id="title"
+                                  >
+                                    {i18n('plugin.cta.export', 'Export')}
+                                  </Typography>
+                                  <Typography textColor="neutral800" tag="h2" id="title">
+                                    {state.isSlugWholeDb
+                                      ? i18n('plugin.export.whole-database', 'Whole database')
+                                      : state.slug}
+                                  </Typography>
+                                </Flex>
+                              </Modal.Title>
+                            </Modal.Header>
+                            <Modal.Body>
+                              <ExportModalContent state={state} />
+                            </Modal.Body>
+                            <Modal.Footer>
+                              <ExportModalFooter state={state} />
+                            </Modal.Footer>
+                          </Modal.Content>
+                        )}
                       </Modal.Root>
                     </Flex>
                   </Flex>

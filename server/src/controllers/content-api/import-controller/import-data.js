@@ -14,20 +14,22 @@ const bodySchema = Joi.object({
   ignoreMissingRelations: Joi.boolean().default(false),
   allowLocaleUpdates: Joi.boolean().default(false),
   disallowNewRelations: Joi.boolean().default(false),
+  createMissingEntities: Joi.boolean().default(false),
 });
 
 const importData = async (ctx) => {
   const { user } = ctx.state;
 
-  const { 
-    slug, 
-    data: dataRaw, 
-    format, 
+  const {
+    slug,
+    data: dataRaw,
+    format,
     idField,
     existingAction,
     ignoreMissingRelations,
     allowLocaleUpdates,
-    disallowNewRelations
+    disallowNewRelations,
+    createMissingEntities,
   } = checkParams(bodySchema, ctx.request.body);
 
   let fileContent;
@@ -35,41 +37,48 @@ const importData = async (ctx) => {
     fileContent = await getService('import').parseInputData(format, dataRaw, { slug });
   } catch (error) {
     ctx.body = {
-      errors: [{
-        error: error.message,
-        data: {
-          entry: dataRaw,
-          path: '',
-        }
-      }],
+      errors: [
+        {
+          error: error.message,
+          data: {
+            entry: dataRaw,
+            path: '',
+          },
+        },
+      ],
     };
     return;
   }
 
   let res;
   const importService = getService('import');
-  
+
   if (fileContent?.version === 3) {
     // Check if an import is already in progress
     if (importService.isImportInProgress()) {
       ctx.body = {
         status: 'error',
-        message: 'An import is already in progress'
+        message: 'An import is already in progress',
       };
       ctx.status = 409; // Conflict
       return;
     }
-    
+
     // For v3 imports, use SSE for progress reporting
-    res = await importService.importDataV3(fileContent, {
-      slug,
-      user,
-      existingAction,
-      ignoreMissingRelations,
-      allowLocaleUpdates,
-      disallowNewRelations
-    }, { useSSE: true });
-    
+    res = await importService.importDataV3(
+      fileContent,
+      {
+        slug,
+        user,
+        existingAction,
+        ignoreMissingRelations,
+        allowLocaleUpdates,
+        disallowNewRelations,
+        createMissingEntities,
+      },
+      { useSSE: true }
+    );
+
     // If the import is running in the background, return a special response
     if (res.backgroundProcessing) {
       // console.log("Import is running in the background");

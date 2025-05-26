@@ -35,7 +35,7 @@ function buildMediaUrl(jsoContent, options) {
         medium.url = buildAbsoluteUrl(medium.url);
       }
       return [id, medium];
-    }),
+    })
   );
 
   jsoContent.data[mediaSlug] = media;
@@ -61,9 +61,22 @@ function pickMediaAttributes(jsoContent, options) {
 
   media = fromPairs(
     toPairs(media).map(([id, medium]) => {
-      medium = pick(medium, ['id', 'name', 'alternativeText', 'caption', 'hash', 'ext', 'mime', 'url', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy']);
+      medium = pick(medium, [
+        'id',
+        'name',
+        'alternativeText',
+        'caption',
+        'hash',
+        'ext',
+        'mime',
+        'url',
+        'createdAt',
+        'updatedAt',
+        'createdBy',
+        'updatedBy',
+      ]);
       return [id, medium];
-    }),
+    })
   );
 
   jsoContent.data[mediaSlug] = media;

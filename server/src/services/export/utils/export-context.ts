@@ -1,59 +1,59 @@
 import { UID } from '@strapi/types';
 
 export interface ExportOptions {
-    documentIds?: string[];
-    applySearch: boolean;
-    search: any;
-    exportAllLocales: boolean;
-    exportRelations: boolean;
-    skipRelations: boolean;
-    skipComponentRelations: boolean;
+  documentIds?: string[];
+  applySearch: boolean;
+  search: any;
+  exportAllLocales: boolean;
+  exportRelations: boolean;
+  skipRelations: boolean;
+  skipComponentRelations: boolean;
 }
 
 export class ExportContext {
-    private processedDocumentIds: Set<string> = new Set();
-    private relations: Record<string, string[]> = {};
+  private processedDocumentIds: Set<string> = new Set();
+  private relations: Record<string, string[]> = {};
 
-    constructor(
-        public readonly options: ExportOptions,
-        public readonly exportedData: Record<string, any> = {},
-        public readonly processedRelations: Record<number, Record<string, string[]>> = {}
-    ) {}
+  constructor(
+    public readonly options: ExportOptions,
+    public readonly exportedData: Record<string, any> = {},
+    public readonly processedRelations: Record<number, Record<string, string[]>> = {}
+  ) {}
 
-    recordProcessed(documentId: string) {
-        this.processedDocumentIds.add(documentId);
+  recordProcessed(documentId: string) {
+    this.processedDocumentIds.add(documentId);
+  }
+
+  wasProcessed(documentId: string): boolean {
+    return this.processedDocumentIds.has(documentId);
+  }
+
+  addRelation(contentType: UID.ContentType, documentId: string) {
+    if (!this.relations[contentType]) {
+      this.relations[contentType] = [];
     }
-
-    wasProcessed(documentId: string): boolean {
-        return this.processedDocumentIds.has(documentId);
+    if (!this.relations[contentType].includes(documentId)) {
+      this.relations[contentType].push(documentId);
     }
+  }
 
-    addRelation(contentType: UID.ContentType, documentId: string) {
-        if (!this.relations[contentType]) {
-            this.relations[contentType] = [];
-        }
-        if (!this.relations[contentType].includes(documentId)) {
-            this.relations[contentType].push(documentId);
-        }
-    }
+  getRelations() {
+    return this.relations;
+  }
 
-    getRelations() {
-        return this.relations;
-    }
+  clearRelations() {
+    this.relations = {};
+  }
 
-    clearRelations() {
-        this.relations = {};
-    }
+  setSkipRelations(skip: boolean) {
+    this.options.skipRelations = skip;
+  }
 
-    setSkipRelations(skip: boolean) {
-        this.options.skipRelations = skip;
-    }
+  setSkipComponentRelations(skip: boolean) {
+    this.options.skipComponentRelations = skip;
+  }
 
-    setSkipComponentRelations(skip: boolean) {
-        this.options.skipComponentRelations = skip;
-    }
-
-    setDocumentIds(documentIds: string[]) {
-        this.options.documentIds = documentIds;
-    }
-} 
+  setDocumentIds(documentIds: string[]) {
+    this.options.documentIds = documentIds;
+  }
+}

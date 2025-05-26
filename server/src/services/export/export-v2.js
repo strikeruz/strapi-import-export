@@ -40,12 +40,16 @@ async function exportDataV2({
   exportPluginsContentTypes,
 }) {
   const slugsToExport =
-    slug === CustomSlugs.WHOLE_DB ? getAllSlugs({ includePluginsContentTypes: exportPluginsContentTypes }) : toArray(CustomSlugToSlug[slug] || slug);
+    slug === CustomSlugs.WHOLE_DB
+      ? getAllSlugs({ includePluginsContentTypes: exportPluginsContentTypes })
+      : toArray(CustomSlugToSlug[slug] || slug);
 
   let store = {};
   for (const slug of slugsToExport) {
     const hierarchy = buildSlugHierarchy(slug, deepness);
-    store = await findEntriesForHierarchy(store, slug, hierarchy, deepness, { ...(applySearch ? { search } : {}) });
+    store = await findEntriesForHierarchy(store, slug, hierarchy, deepness, {
+      ...(applySearch ? { search } : {}),
+    });
   }
   const jsoContent = {
     version: 2,
@@ -57,13 +61,7 @@ async function exportDataV2({
   return fileContent;
 }
 
-async function findEntriesForHierarchy(
-  store,
-  slug,
-  hierarchy,
-  deepness,
-  { search, ids },
-) {
+async function findEntriesForHierarchy(store, slug, hierarchy, deepness, { search, ids }) {
   const schema = getModel(slug);
 
   if (schema.uid === 'admin::user') {
@@ -133,10 +131,16 @@ async function findEntriesForHierarchy(
     };
 
     const flattenEntry = (entry, slug) => {
-      const attributes = getModelAttributes(slug, { filterType: ['component', 'dynamiczone', 'media', 'relation'] });
+      const attributes = getModelAttributes(slug, {
+        filterType: ['component', 'dynamiczone', 'media', 'relation'],
+      });
 
       for (const attribute of attributes) {
-        setEntryProp(entry, attribute.name, flattenProperty(attribute, getEntryProp(entry, attribute.name)));
+        setEntryProp(
+          entry,
+          attribute.name,
+          flattenProperty(attribute, getEntryProp(entry, attribute.name))
+        );
       }
 
       return entry;
@@ -145,7 +149,10 @@ async function findEntriesForHierarchy(
     entriesFlatten = entriesFlatten.map((entry) => flattenEntry(entry, slug));
   })();
 
-  store = mergeObjects({ [slug]: Object.fromEntries(entriesFlatten.map((entry) => [entry.id, entry])) }, store);
+  store = mergeObjects(
+    { [slug]: Object.fromEntries(entriesFlatten.map((entry) => [entry.id, entry])) },
+    store
+  );
 
   // Skip admin::user slug.
   const filterOutUnwantedRelations = () => {
@@ -178,7 +185,13 @@ async function findEntriesForHierarchy(
         .map((entry) => entry.id)
         .filter((id) => typeof store?.[attributeSlug]?.[`${id}`] === 'undefined');
 
-      const dataToStore = await findEntriesForHierarchy(store, attributeSlug, hierarchy[attribute.name], deepness - 1, { ids });
+      const dataToStore = await findEntriesForHierarchy(
+        store,
+        attributeSlug,
+        hierarchy[attribute.name],
+        deepness - 1,
+        { ids }
+      );
       store = mergeObjects(dataToStore, store);
     }
   };
@@ -201,7 +214,13 @@ async function findEntriesForHierarchy(
           .map((entry) => entry.id)
           .filter((id) => typeof store?.[componentSlug]?.[`${id}`] === 'undefined');
 
-        const dataToStore = await findEntriesForHierarchy(store, componentSlug, componentHierarchy, deepness - 1, { ids });
+        const dataToStore = await findEntriesForHierarchy(
+          store,
+          componentSlug,
+          componentHierarchy,
+          deepness - 1,
+          { ids }
+        );
         store = mergeObjects(dataToStore, store);
       }
     }
@@ -223,7 +242,13 @@ async function findEntriesForHierarchy(
         .map((entry) => entry.id)
         .filter((id) => typeof store?.[attributeSlug]?.[`${id}`] === 'undefined');
 
-      const dataToStore = await findEntriesForHierarchy(store, attributeSlug, hierarchy[attribute.name], deepness - 1, { ids });
+      const dataToStore = await findEntriesForHierarchy(
+        store,
+        attributeSlug,
+        hierarchy[attribute.name],
+        deepness - 1,
+        { ids }
+      );
       store = mergeObjects(dataToStore, store);
     }
   };
@@ -244,7 +269,13 @@ async function findEntriesForHierarchy(
         .map((entry) => entry.id)
         .filter((id) => typeof store?.[attributeSlug]?.[`${id}`] === 'undefined');
 
-      const dataToStore = await findEntriesForHierarchy(store, attributeSlug, hierarchy[attribute.name], deepness - 1, { ids });
+      const dataToStore = await findEntriesForHierarchy(
+        store,
+        attributeSlug,
+        hierarchy[attribute.name],
+        deepness - 1,
+        { ids }
+      );
       store = mergeObjects(dataToStore, store);
     }
   };
@@ -281,7 +312,7 @@ function buildFilterQuery(search = '') {
   let { filters, sort: sortRaw } = qs.parse(search);
 
   // TODO: improve query parsing
-  const [attr, value] = (sortRaw)?.split(':') || [];
+  const [attr, value] = sortRaw?.split(':') || [];
   const sort = {};
   if (attr && value) {
     sort[attr] = value.toLowerCase();
@@ -371,7 +402,12 @@ function buildSlugHierarchy(slug, deepness = 5) {
     if (isComponentAttribute(attribute)) {
       hierarchy[attributeName] = buildSlugHierarchy(attribute.component, deepness - 1);
     } else if (isDynamicZoneAttribute(attribute)) {
-      hierarchy[attributeName] = Object.fromEntries(attribute.components.map((componentSlug) => [componentSlug, buildSlugHierarchy(componentSlug, deepness - 1)]));
+      hierarchy[attributeName] = Object.fromEntries(
+        attribute.components.map((componentSlug) => [
+          componentSlug,
+          buildSlugHierarchy(componentSlug, deepness - 1),
+        ])
+      );
     } else if (isRelationAttribute(attribute)) {
       const relationHierarchy = buildSlugHierarchy(attribute.target, deepness - 1);
       if (relationHierarchy) {

@@ -2,7 +2,7 @@ import { getTranslation } from './utils/getTranslation';
 import { PLUGIN_ID } from './pluginId';
 import { Initializer } from './components/Initializer';
 import { PluginIcon } from './components/PluginIcon';
-import {pluginPermissions} from './permissions';
+import { pluginPermissions } from './permissions';
 import { Download } from '@strapi/icons';
 // @ts-ignore
 import { Alerts } from './components/Injected/Alerts/Alerts';
@@ -10,13 +10,16 @@ import { Alerts } from './components/Injected/Alerts/Alerts';
 import { ImportModal } from './components/ImportModal/ImportModal';
 // @ts-ignore
 // import { ExportModal } from './components/ExportModal/ExportModal';
-import translations from './translations'; 
+import translations from './translations';
 // @ts-ignore
 import { InjectedImportExportSingleType } from './components/InjectedImportExportSingleType/InjectedImportExportSingleType';
 // @ts-ignore
 import { InjectedExportCollectionType } from './components/InjectedExportCollectionType/InjectedExportCollectionType';
 
-import type { BulkActionComponent, ContentManagerPlugin } from '../../node_modules/@strapi/content-manager/dist/admin/src/content-manager';
+import type {
+  BulkActionComponent,
+  ContentManagerPlugin,
+} from '../../node_modules/@strapi/content-manager/dist/admin/src/content-manager';
 import type { StrapiApp } from '@strapi/strapi/admin';
 import { BULK_ACTIONS } from './components/BulkExportModal/BulkExportModal';
 
@@ -27,7 +30,7 @@ export default {
       icon: PluginIcon,
       intlLabel: {
         id: `${PLUGIN_ID}.plugin.name`,
-        defaultMessage:'Import Export',
+        defaultMessage: 'Import Export',
       },
       permissions: pluginPermissions.main,
       Component: async () => {
@@ -63,9 +66,9 @@ export default {
       Component: ImportModal,
     });
     // app.injectContentManagerComponent('listView', 'actions', {
-      //   name: `${pluginId}-export`,
-      //   Component: InjectedExportCollectionType,
-      // });
+    //   name: `${pluginId}-export`,
+    //   Component: InjectedExportCollectionType,
+    // });
 
     const ExportModal = InjectedExportCollectionType;
 
@@ -73,7 +76,7 @@ export default {
       name: `${PLUGIN_ID}-export`,
       Component: ExportModal,
     });
-      
+
     // app.injectContentManagerComponent('editView', 'right-links', {
     //   name: `${pluginId}-alerts`,
     //   Component: Alerts,
@@ -83,7 +86,7 @@ export default {
       Component: Alerts,
     });
     // app.injectContentManagerComponent('editView', 'right-links', {
-      //   name: `${pluginId}-import-export`,
+    //   name: `${pluginId}-import-export`,
     //   Component: InjectedImportExportSingleType,
     // });
     app.getPlugin('content-manager').injectComponent('editView', 'right-links', {
@@ -104,8 +107,9 @@ export default {
     //   };
     // };
 
-    (app.getPlugin('content-manager') as unknown as ContentManagerPlugin['config']).apis.addBulkAction(BULK_ACTIONS);
-
+    (
+      app.getPlugin('content-manager') as unknown as ContentManagerPlugin['config']
+    ).apis.addBulkAction(BULK_ACTIONS);
   },
 
   async registerTrads(app: any) {
@@ -114,12 +118,12 @@ export default {
     const importedTranslations = [
       {
         data: translations.en,
-        locale: 'en'
+        locale: 'en',
       },
       {
         data: translations.uk,
-        locale: 'uk'
-      }
+        locale: 'uk',
+      },
     ];
 
     return importedTranslations;
@@ -149,4 +153,3 @@ export default {
   //   return importedTranslations;
   // },
 };
-

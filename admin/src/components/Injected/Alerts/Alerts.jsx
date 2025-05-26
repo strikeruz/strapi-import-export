@@ -26,7 +26,13 @@ export const Alerts = () => {
     <Portal>
       <AlertWrapper>
         {alerts?.map(({ id, title, message, variant }) => (
-          <Alert key={id} closeLabel="Close" title={title} variant={variant} onClose={() => removeAlert(id)}>
+          <Alert
+            key={id}
+            closeLabel="Close"
+            title={title}
+            variant={variant}
+            onClose={() => removeAlert(id)}
+          >
             {message}
           </Alert>
         ))}

@@ -15,13 +15,18 @@ export const useLocalStorage = () => {
   const getPreferences = (): Preferences => {
     const preferences = localStorage.getItem(PREFERENCES_KEY);
 
-    return preferences != null ? { ...DEFAULT_PREFERENCES, ...JSON.parse(preferences) } : { ...DEFAULT_PREFERENCES };
+    return preferences != null
+      ? { ...DEFAULT_PREFERENCES, ...JSON.parse(preferences) }
+      : { ...DEFAULT_PREFERENCES };
   };
 
   const updatePreferences = (partialPreferences: Partial<Preferences>): void => {
     const preferences = getPreferences();
 
-    return localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ ...preferences, ...partialPreferences }));
+    return localStorage.setItem(
+      PREFERENCES_KEY,
+      JSON.stringify({ ...preferences, ...partialPreferences })
+    );
   };
 
   const getItem = (key: string): string | null => {

@@ -23,7 +23,7 @@
   "strapi-import-export.plugin.form.field.existing-action.label": "Existing Entry Action",
   "strapi-import-export.plugin.form.field.existing-action.hint": "Choose how to handle existing entries",
   "strapi-import-export.plugin.form.field.existing-action.placeholder": "Select action",
-  
+
   "strapi-import-export.plugin.form.field.ignore-missing-relations.label": "Ignore Missing Relations",
   "strapi-import-export.plugin.form.field.ignore-missing-relations.hint": "Continue import even if related entries are not found",
 
@@ -32,6 +32,9 @@
 
   "strapi-import-export.plugin.form.field.disallow-new-relations.label": "Prevent Relation Changes on Existing",
   "strapi-import-export.plugin.form.field.disallow-new-relations.hint": "When skipping existing entries, prevent any changes to their relations",
+
+  "strapi-import-export.plugin.form.field.create-missing-entities.label": "Create Missing Entities",
+  "strapi-import-export.plugin.form.field.create-missing-entities.hint": "Automatically create new entities when relations are not found (for countries, FAQs, etc.)",
 
   "strapi-import-export.plugin.message.export.error.idfield.title": "Invalid ID Field Configuration",
   "strapi-import-export.plugin.message.export.error.idfield.message": "The ID field must be configured as required and unique",

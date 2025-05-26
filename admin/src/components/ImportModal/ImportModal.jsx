@@ -1,12 +1,28 @@
-import { Modal, Button, Typography, Flex, Box, Loader, Accordion, Tabs } from '@strapi/design-system';
-import { CheckCircle, Code as IconCode, File as IconFile, Upload, CrossCircle, WarningCircle } from '@strapi/icons';
+import {
+  Modal,
+  Button,
+  Typography,
+  Flex,
+  Box,
+  Loader,
+  Accordion,
+  Tabs,
+} from '@strapi/design-system';
+import {
+  CheckCircle,
+  Code as IconCode,
+  File as IconFile,
+  Upload,
+  CrossCircle,
+  WarningCircle,
+} from '@strapi/icons';
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useIntl } from 'react-intl';
 import styled from 'styled-components'; // Correct import for styled
 import { useFetchClient } from '@strapi/admin/strapi-admin';
-import { PLUGIN_ID } from '../../pluginId'
+import { PLUGIN_ID } from '../../pluginId';
 // import { EventSourcePolyfill } from 'event-source-polyfill';  // Alternative import for EventSource
 import { EventSource } from 'eventsource';
 
@@ -47,11 +63,11 @@ const IconWrapper = styled.span`
   svg {
     width: 6rem;
     height: 6rem;
-    color: #C0C0CF;
+    color: #c0c0cf;
   }
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 `;
 
 const DragOverLabel = styled(Label)`
@@ -59,7 +75,7 @@ const DragOverLabel = styled(Label)`
     border-color: var(--hover-color);
 
     &::after {
-      content: "";
+      content: '';
       display: block;
       position: absolute;
       top: 0;
@@ -191,7 +207,7 @@ export const ImportModal = ({ onClose }) => {
     if (fromSessionStorage) {
       return JSON.parse(fromSessionStorage);
     }
-  
+
     const fromCookie = getCookieValue('jwtToken');
     return fromCookie ?? null;
   };
@@ -219,22 +235,23 @@ export const ImportModal = ({ onClose }) => {
 
     const url = normalizeUrl(`/${PLUGIN_ID}/import/progress`);
     const fullUrl = addBaseUrl(url);
-    
+
     // Close any existing connection
     if (sseConnection) {
-      console.log("Closing existing SSE connection");
+      console.log('Closing existing SSE connection');
       sseConnection.close();
     }
 
     // Create an EventSource with headers
     const eventSource = new EventSource(fullUrl, {
-      fetch: (input, init) => fetch(input, {
-        ...init,
-        headers: {
-          ...init.headers,
-          'Authorization': `Bearer ${getToken()}`
-        }
-      })
+      fetch: (input, init) =>
+        fetch(input, {
+          ...init,
+          headers: {
+            ...init.headers,
+            Authorization: `Bearer ${getToken()}`,
+          },
+        }),
     });
 
     eventSource.addEventListener('connected', (e) => {
@@ -267,8 +284,7 @@ export const ImportModal = ({ onClose }) => {
           'success'
         );
         refreshView();
-      }
-      else if (result.failures?.length) {
+      } else if (result.failures?.length) {
         setUploadSuccessful(ModalState.PARTIAL);
         setImportFailuresContent(JSON.stringify(result.failures, null, '\t'));
         notify(
@@ -276,8 +292,7 @@ export const ImportModal = ({ onClose }) => {
           i18n('plugin.message.import.error.imported-partial.message'),
           'danger'
         );
-      }
-      else if (result.errors?.length) {
+      } else if (result.errors?.length) {
         setUploadSuccessful(ModalState.ERROR);
         setImportErrorsContent(JSON.stringify(result.errors, null, '\t'));
       }
@@ -289,10 +304,18 @@ export const ImportModal = ({ onClose }) => {
         console.error('Import error:', data);
         setUploadingData(false);
         setUploadSuccessful(ModalState.ERROR);
-        setImportErrorsContent(JSON.stringify([{
-          error: data.message,
-          data: { entry: {}, path: '' }
-        }], null, '\t'));
+        setImportErrorsContent(
+          JSON.stringify(
+            [
+              {
+                error: data.message,
+                data: { entry: {}, path: '' },
+              },
+            ],
+            null,
+            '\t'
+          )
+        );
       } catch (err) {
         // If e.data isn't valid JSON, it's a connection error
         console.error('SSE error event (not JSON):', e);
@@ -310,10 +333,18 @@ export const ImportModal = ({ onClose }) => {
         // Only show an error if we were in the middle of processing
         setUploadingData(false);
         setUploadSuccessful(ModalState.ERROR);
-        setImportErrorsContent(JSON.stringify([{
-          error: 'SSE connection error',
-          data: { entry: {}, path: '' }
-        }], null, '\t'));
+        setImportErrorsContent(
+          JSON.stringify(
+            [
+              {
+                error: 'SSE connection error',
+                data: { entry: {}, path: '' },
+              },
+            ],
+            null,
+            '\t'
+          )
+        );
       }
 
       eventSource.close();
@@ -328,24 +359,24 @@ export const ImportModal = ({ onClose }) => {
     setUploadingData(true);
     try {
       const { post } = fetchClient;
-      const res = await post(`/${PLUGIN_ID}/import`, {
-        data: { slug, data, format: dataFormat, ...options },
-      }, { headers: { 'Authorization': `Bearer ${getToken()}` }});
+      const res = await post(
+        `/${PLUGIN_ID}/import`,
+        {
+          data: { slug, data, format: dataFormat, ...options },
+        },
+        { headers: { Authorization: `Bearer ${getToken()}` } }
+      );
 
       if (res.data.status === 'error') {
         // Handle error response
-        notify(
-          i18n('plugin.message.import.error.unexpected.title'),
-          res.data.message,
-          'danger'
-        );
+        notify(i18n('plugin.message.import.error.unexpected.title'), res.data.message, 'danger');
         setUploadingData(false);
         return;
       }
 
       if (res.data.status === 'started' && res.data.useSSE) {
         // This is a background job using SSE
-        console.log("Should connect to SSE");
+        console.log('Should connect to SSE');
         connectToSSE();
         return;
       }
@@ -361,8 +392,7 @@ export const ImportModal = ({ onClose }) => {
           'success'
         );
         refreshView();
-      }
-      else if (failures?.length) {
+      } else if (failures?.length) {
         setUploadSuccessful(ModalState.PARTIAL);
         setImportFailuresContent(JSON.stringify(failures, null, '\t'));
         notify(
@@ -370,8 +400,7 @@ export const ImportModal = ({ onClose }) => {
           i18n('plugin.message.import.error.imported-partial.message'),
           'danger'
         );
-      }
-      else if (errors?.length) {
+      } else if (errors?.length) {
         setUploadSuccessful(ModalState.ERROR);
         setImportErrorsContent(JSON.stringify(errors, null, '\t'));
       }
@@ -411,13 +440,15 @@ export const ImportModal = ({ onClose }) => {
   };
 
   const refreshView = () => {
-    dispatch(adminApi.util.invalidateTags([
-      'Document',
-      'HistoryVersion',
-      'Relations',
-      'UidAvailability',
-      'RecentDocumentList',
-    ]));
+    dispatch(
+      adminApi.util.invalidateTags([
+        'Document',
+        'HistoryVersion',
+        'Relations',
+        'UidAvailability',
+        'RecentDocumentList',
+      ])
+    );
   };
 
   const handleDragOver = (e) => {
@@ -474,12 +505,19 @@ export const ImportModal = ({ onClose }) => {
   return (
     <Modal.Root onClose={onClose}>
       <Modal.Trigger>
-        <Button startIcon={<Upload />}>{formatMessage({ id: getTrad('plugin.cta.import') })}</Button>
+        <Button startIcon={<Upload />}>
+          {formatMessage({ id: getTrad('plugin.cta.import') })}
+        </Button>
       </Modal.Trigger>
       <Modal.Content>
         <Modal.Header>
           <Modal.Title>
-            <Typography fontWeight="bold" textColor="neutral800" as="h2" style={{ marginBottom: '16px' }}>
+            <Typography
+              fontWeight="bold"
+              textColor="neutral800"
+              as="h2"
+              style={{ marginBottom: '16px' }}
+            >
               {i18n('plugin.cta.import')}
             </Typography>
           </Modal.Title>
@@ -527,34 +565,40 @@ export const ImportModal = ({ onClose }) => {
                 </Typography>
                 <Loader>{`${Math.round(importProgress)}%`}</Loader>
                 <Box width="100%" padding={4}>
-                  <div style={{
-                    width: '100%',
-                    height: '8px',
-                    backgroundColor: '#f0f0f0',
-                    borderRadius: '4px',
-                    overflow: 'hidden'
-                  }}>
-                    <div style={{
-                      width: `${importProgress}%`,
-                      height: '100%',
-                      backgroundColor: '#4945ff',
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '8px',
+                      backgroundColor: '#f0f0f0',
                       borderRadius: '4px',
-                      transition: 'width 0.3s ease-in-out'
-                    }} />
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${importProgress}%`,
+                        height: '100%',
+                        backgroundColor: '#4945ff',
+                        borderRadius: '4px',
+                        transition: 'width 0.3s ease-in-out',
+                      }}
+                    />
                   </div>
                 </Box>
               </Flex>
             </>
           )}
-          {showEditor && <ImportEditor
-            file={file}
-            data={data}
-            dataFormat={dataFormat}
-            slug={slug}
-            onDataChanged={handleDataChanged}
-            onOptionsChanged={setOptions}
-            version={parsedData?.version}
-          />}
+          {showEditor && (
+            <ImportEditor
+              file={file}
+              data={data}
+              dataFormat={dataFormat}
+              slug={slug}
+              onDataChanged={handleDataChanged}
+              onOptionsChanged={setOptions}
+              version={parsedData?.version}
+            />
+          )}
           {showSuccess && (
             <Flex direction="column" alignItems="center" gap={4}>
               <Box paddingBottom={4}>
@@ -596,13 +640,18 @@ export const ImportModal = ({ onClose }) => {
                     {JSON.parse(importErrorsContent).map((error, index) => (
                       <Accordion.Item key={index} value={`acc-${index}`}>
                         <Accordion.Header>
-                          <Accordion.Trigger icon={CrossCircle} description={error.data?.path || ''}>
+                          <Accordion.Trigger
+                            icon={CrossCircle}
+                            description={error.data?.path || ''}
+                          >
                             {error.error}
                           </Accordion.Trigger>
                         </Accordion.Header>
                         <Accordion.Content>
-                          <Typography display="block" tag='pre' padding={4}>
-                            {typeof error.data?.entry === 'string' ? error.data?.entry : JSON.stringify(error.data?.entry || '', null, 2)}
+                          <Typography display="block" tag="pre" padding={4}>
+                            {typeof error.data?.entry === 'string'
+                              ? error.data?.entry
+                              : JSON.stringify(error.data?.entry || '', null, 2)}
                           </Typography>
                         </Accordion.Content>
                       </Accordion.Item>

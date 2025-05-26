@@ -17,27 +17,35 @@ export const InjectedImportExportSingleType = () => {
 
   return (
     <>
-    <Page.Protect permissions={pluginPermissions.main}>
-    {/* <CheckPermissions permissions={pluginPermissions.main}> */}
-      <Box background="neutral0" hasRadius shadow="filterShadow" paddingTop={6} paddingBottom={4} paddingLeft={3} paddingRight={3}>
-        <Typography variant="sigma" textColor="neutral600">
-          {formatMessage({ id: getTrad('plugin.name') })}
-        </Typography>
-        <Box paddingTop={2} paddingBottom={6}>
-          <Divider />
-        </Box>
+      <Page.Protect permissions={pluginPermissions.main}>
+        {/* <CheckPermissions permissions={pluginPermissions.main}> */}
+        <Box
+          background="neutral0"
+          hasRadius
+          shadow="filterShadow"
+          paddingTop={6}
+          paddingBottom={4}
+          paddingLeft={3}
+          paddingRight={3}
+        >
+          <Typography variant="sigma" textColor="neutral600">
+            {formatMessage({ id: getTrad('plugin.name') })}
+          </Typography>
+          <Box paddingTop={2} paddingBottom={6}>
+            <Divider />
+          </Box>
 
-        <Box paddingBottom={1}>
-          <Flex direction="column" gap={2}>
-            <InjectedExportCollectionType />
-            <ImportModal />
-            {/* <ExportModal fullWidth  unavailableOptions={['exportPluginsContentTypes']} /> */}
-            {/* <ExportButton fullWidth unavailableOptions={['exportPluginsContentTypes']} /> */}
-          </Flex>
+          <Box paddingBottom={1}>
+            <Flex direction="column" gap={2}>
+              <InjectedExportCollectionType />
+              <ImportModal />
+              {/* <ExportModal fullWidth  unavailableOptions={['exportPluginsContentTypes']} /> */}
+              {/* <ExportButton fullWidth unavailableOptions={['exportPluginsContentTypes']} /> */}
+            </Flex>
+          </Box>
         </Box>
-      </Box>
-    {/* </CheckPermissions> */}
-    </Page.Protect>
+        {/* </CheckPermissions> */}
+      </Page.Protect>
     </>
   );
 };

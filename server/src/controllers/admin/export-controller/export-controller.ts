@@ -14,44 +14,57 @@ const exportData: Core.ControllerHandler = async (ctx) => {
 
   let data;
   const { data: dataRaw } = ctx.request.body;
-  const { 
-    slug, 
-    search, 
-    applySearch, 
-    exportFormat, 
-    relationsAsId, 
-    deepness = 5, 
-    exportPluginsContentTypes, 
-    documentIds, 
+  const {
+    slug,
+    search,
+    applySearch,
+    exportFormat,
+    relationsAsId,
+    deepness = 5,
+    exportPluginsContentTypes,
+    documentIds,
     exportAllLocales = false,
     exportRelations = false,
     deepPopulateRelations = false,
-    deepPopulateComponentRelations = false
+    deepPopulateComponentRelations = false,
   } = dataRaw;
-  
+
   console.log('exportFormat', exportFormat);
 
   try {
     if (exportFormat === getService('export').formats.JSON_V3) {
       console.log('exportDataV3');
-      data = await getService('export').exportDataV3({ 
-        slug, 
-        search, 
-        applySearch, 
-        exportPluginsContentTypes, 
-        documentIds, 
+      data = await getService('export').exportDataV3({
+        slug,
+        search,
+        applySearch,
+        exportPluginsContentTypes,
+        documentIds,
         maxDepth: deepness,
         exportAllLocales,
         exportRelations,
         deepPopulateRelations,
-        deepPopulateComponentRelations
+        deepPopulateComponentRelations,
       });
     } else if (exportFormat === getService('export').formats.JSON_V2) {
       console.log('exportDataV2');
-      data = await getService('export').exportDataV2({ slug, search, applySearch, deepness, exportPluginsContentTypes });
+      data = await getService('export').exportDataV2({
+        slug,
+        search,
+        applySearch,
+        deepness,
+        exportPluginsContentTypes,
+      });
     } else {
       console.log('exportData');
-      data = await getService('export').exportData({ slug, search, applySearch, exportFormat, relationsAsId, deepness });
+      data = await getService('export').exportData({
+        slug,
+        search,
+        applySearch,
+        exportFormat,
+        relationsAsId,
+        deepness,
+      });
     }
 
     ctx.body = {
@@ -75,13 +88,16 @@ const exportData: Core.ControllerHandler = async (ctx) => {
 
 const hasPermissions = (ctx) => {
   const { data } = ctx.request.body;
-  const {slug } = data
+  const { slug } = data;
   const { userAbility } = ctx.state;
 
   const slugs = slug === CustomSlugs.WHOLE_DB ? getAllSlugs() : [slug];
 
   const allowedSlugs = slugs.filter((slug) => {
-    const permissionChecker = strapi.plugin('content-manager').service('permission-checker').create({ userAbility, model: slug });
+    const permissionChecker = strapi
+      .plugin('content-manager')
+      .service('permission-checker')
+      .create({ userAbility, model: slug });
     return permissionChecker.can.read();
   });
 

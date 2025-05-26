@@ -8,7 +8,9 @@ export const useSlug = () => {
   console.log('pathname', pathname);
   const slug = useMemo(() => {
     // Updated regex to match 'collection-types' and 'single-types'
-    const matches = pathname.match(/content-manager\/(collection-types|single-types)\/([a-zA-Z0-9\-:_.]*)/);
+    const matches = pathname.match(
+      /content-manager\/(collection-types|single-types)\/([a-zA-Z0-9\-:_.]*)/
+    );
     return matches?.[2] ? matches[2] : SLUG_WHOLE_DB;
   }, [pathname]);
 

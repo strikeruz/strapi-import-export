@@ -11,8 +11,4 @@ const isCustomSlug = (slug) => {
   return !!CustomSlugToSlug[slug];
 };
 
-export {
-  CustomSlugs,
-  CustomSlugToSlug,
-  isCustomSlug,
-};
+export { CustomSlugs, CustomSlugToSlug, isCustomSlug };

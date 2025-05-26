@@ -11,29 +11,32 @@ async function importData(ctx) {
 
   const { user } = ctx.state;
   const { data } = ctx.request.body;
-  const { 
-    slug, 
-    data: dataRaw, 
-    format, 
-    idField, 
-    existingAction, 
+  const {
+    slug,
+    data: dataRaw,
+    format,
+    idField,
+    existingAction,
     ignoreMissingRelations,
     allowLocaleUpdates,
-    disallowNewRelations
+    disallowNewRelations,
+    createMissingEntities,
   } = data;
-  
+
   let fileContent;
   try {
     fileContent = await getService('import').parseInputData(format, dataRaw, { slug });
   } catch (error) {
     ctx.body = {
-      errors: [{
-        error: error.message,
-        data: {
-          entry: dataRaw,
-          path: '',
-        }
-      }],
+      errors: [
+        {
+          error: error.message,
+          data: {
+            entry: dataRaw,
+            path: '',
+          },
+        },
+      ],
     };
     return;
   }
@@ -43,7 +46,7 @@ async function importData(ctx) {
   if (fileContent?.version === 3 && importService.isImportInProgress()) {
     ctx.body = {
       status: 'error',
-      message: 'An import is already in progress'
+      message: 'An import is already in progress',
     };
     ctx.status = 409; // Conflict
     return;
@@ -52,15 +55,20 @@ async function importData(ctx) {
   let res;
   if (fileContent?.version === 3) {
     // For v3 imports, use SSE for progress reporting
-    res = await importService.importDataV3(fileContent, {
-      slug,
-      user,
-      existingAction,
-      ignoreMissingRelations,
-      allowLocaleUpdates,
-      disallowNewRelations
-    }, { useSSE: true });
-    
+    res = await importService.importDataV3(
+      fileContent,
+      {
+        slug,
+        user,
+        existingAction,
+        ignoreMissingRelations,
+        allowLocaleUpdates,
+        disallowNewRelations,
+        createMissingEntities,
+      },
+      { useSSE: true }
+    );
+
     // If the import is running in the background, return a special response
     if (res.backgroundProcessing) {
       ctx.body = {
@@ -109,7 +117,10 @@ function hasPermissions(ctx) {
 }
 
 function hasPermissionForSlug(userAbility, slug) {
-  const permissionChecker = strapi.plugin('content-manager').service('permission-checker').create({ userAbility, model: slug });
+  const permissionChecker = strapi
+    .plugin('content-manager')
+    .service('permission-checker')
+    .create({ userAbility, model: slug });
 
   return permissionChecker.can.create() && permissionChecker.can.update();
 }

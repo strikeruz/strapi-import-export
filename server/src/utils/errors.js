@@ -8,7 +8,7 @@ Object.keys(errorMessages).forEach(
   (k) =>
     (errorMessages[k] = _.template(errorMessages[k], {
       interpolate: /\{\s*(\S+)\s*\}/g,
-    })),
+    }))
 );
 
 class BusinessError extends Error {

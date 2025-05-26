@@ -5,83 +5,95 @@ import { ExportContext } from './utils/export-context';
 import { ExportProcessor } from './utils/export-processor';
 
 export interface ExportV3Options {
-    slug: string;
-    search: string;
-    applySearch: boolean;
-    exportPluginsContentTypes: boolean;
-    documentIds?: string[];
-    maxDepth?: number;
-    exportAllLocales?: boolean;
-    exportRelations?: boolean;
-    deepPopulateRelations?: boolean;
-    deepPopulateComponentRelations?: boolean;
+  slug: string;
+  search: string;
+  applySearch: boolean;
+  exportPluginsContentTypes: boolean;
+  documentIds?: string[];
+  maxDepth?: number;
+  exportAllLocales?: boolean;
+  exportRelations?: boolean;
+  deepPopulateRelations?: boolean;
+  deepPopulateComponentRelations?: boolean;
 }
 
 export async function exportDataV3({
-    slug,
-    search,
-    applySearch,
-    exportPluginsContentTypes,
-    documentIds,
-    maxDepth = 20,
-    exportAllLocales = true,
-    exportRelations = false,
-    deepPopulateRelations = false,
-    deepPopulateComponentRelations = false
+  slug,
+  search,
+  applySearch,
+  exportPluginsContentTypes,
+  documentIds,
+  maxDepth = 20,
+  exportAllLocales = true,
+  exportRelations = false,
+  deepPopulateRelations = false,
+  deepPopulateComponentRelations = false,
 }: ExportV3Options): Promise<string> {
-    const slugsToExport = 
-        slug === CustomSlugs.WHOLE_DB ? 
-        getAllSlugs({ includePluginsContentTypes: exportPluginsContentTypes }) : 
-        [CustomSlugToSlug[slug] || slug];
+  const slugsToExport =
+    slug === CustomSlugs.WHOLE_DB
+      ? getAllSlugs({ includePluginsContentTypes: exportPluginsContentTypes })
+      : [CustomSlugToSlug[slug] || slug];
 
-    const searchParams = applySearch ? buildFilterQuery(search) : {};
-    
-    const context = new ExportContext({
-        documentIds,
-        applySearch,
-        search: searchParams,
-        exportAllLocales,
-        exportRelations,
-        skipRelations: false,
-        skipComponentRelations: false
-    });
+  const searchParams = applySearch ? buildFilterQuery(search) : {};
 
-    console.log('Skip relations', deepPopulateRelations === false, deepPopulateComponentRelations === false);
+  const context = new ExportContext({
+    documentIds,
+    applySearch,
+    search: searchParams,
+    exportAllLocales,
+    exportRelations,
+    skipRelations: false,
+    skipComponentRelations: false,
+  });
 
-    const processor = new ExportProcessor(context, {
-        documents: strapi.documents
-    });
+  console.log(
+    'Skip relations',
+    deepPopulateRelations === false,
+    deepPopulateComponentRelations === false
+  );
 
-    for (const currentSlug of slugsToExport) {
-        await processor.processSchema(currentSlug);
+  const processor = new ExportProcessor(context, {
+    documents: strapi.documents,
+  });
+
+  for (const currentSlug of slugsToExport) {
+    await processor.processSchema(currentSlug);
+  }
+
+  console.log('FIRST RELATIONS:', context.getRelations());
+
+  context.setSkipRelations(deepPopulateRelations === false);
+  context.setSkipComponentRelations(deepPopulateComponentRelations === false);
+
+  let loopCount = 0;
+  while (
+    Object.keys(context.getRelations()).length > 0 &&
+    exportRelations &&
+    loopCount < maxDepth
+  ) {
+    const nextRelations = context.getRelations();
+    context.clearRelations();
+
+    for (const [key, documentIds] of Object.entries(nextRelations)) {
+      console.log('PROCESSING RELATIONS FOR', key);
+      console.log('DOCUMENT IDS', documentIds);
+      context.setDocumentIds(documentIds);
+      await processor.processSchema(key);
     }
 
-    console.log('FIRST RELATIONS:', context.getRelations());
+    context.processedRelations[loopCount] = nextRelations;
+    loopCount++;
+  }
 
-    context.setSkipRelations(deepPopulateRelations === false);
-    context.setSkipComponentRelations(deepPopulateComponentRelations === false);
-
-    let loopCount = 0;
-    while (Object.keys(context.getRelations()).length > 0 && exportRelations && loopCount < maxDepth) {
-        const nextRelations = context.getRelations();
-        context.clearRelations();
-
-        for (const [key, documentIds] of Object.entries(nextRelations)) {
-            console.log('PROCESSING RELATIONS FOR', key);
-            console.log('DOCUMENT IDS', documentIds);
-            context.setDocumentIds(documentIds);
-            await processor.processSchema(key);
-        }
-
-        context.processedRelations[loopCount] = nextRelations;
-        loopCount++;
-    }
-
-    return JSON.stringify({
-        version: 3,
-        data: context.exportedData
-    }, null, '\t');
-} 
+  return JSON.stringify(
+    {
+      version: 3,
+      data: context.exportedData,
+    },
+    null,
+    '\t'
+  );
+}
 
 // import { getModel, getModelAttributes, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribute, isRelationAttribute, getAllSlugs } from '../../utils/models';
 // import { CustomSlugs, CustomSlugToSlug } from '../../config/constants.js';
@@ -95,7 +107,7 @@ export async function exportDataV3({
 // }
 
 // /**
-//  * 
+//  *
 //  * Get the identifier field for a model, falling back through uid -> name -> title -> id
 //  */
 // function getIdentifierField(model) {
@@ -104,7 +116,7 @@ export async function exportDataV3({
 //     console.log('Using configured idField:', model.pluginOptions[pluginId].idField);
 //     return model.pluginOptions[pluginId].idField;
 //   }
-  
+
 //   const attributes = model.attributes || {};
 //   console.log('Looking for identifier in attributes:', Object.keys(attributes));
 //   if (attributes.uid) return 'uid';
@@ -130,7 +142,7 @@ export async function exportDataV3({
 //   if (!data) return null;
 
 //   const processed = { ...data };
-  
+
 //   // Only delete id if it's not being used as the identifier field
 //   // const idField = getIdentifierField(schema);
 //   // console.log('Identifier field:', idField, 'schema:', schema.uid, 'id:', processed.id);
@@ -146,12 +158,11 @@ export async function exportDataV3({
 //   if (!options.processLocalizations) {
 //     delete processed.localizations;
 //   }
-  
 
 //   for (const [key, attr] of Object.entries(schema.attributes)) {
 //     console.log(`Processing attribute ${key} of type ${attr.type}`);
 //     console.log(`Current value:`, JSON.stringify(data[key], null, 2));
-    
+
 //     if (data[key] === undefined || data[key] === null) {
 //       console.log(`No data for ${key}, skipping`);
 //       continue;
@@ -160,7 +171,7 @@ export async function exportDataV3({
 //     // Special handling for localizations
 //     if (key === 'localizations' && options.processLocalizations) {
 //       console.log('Processing localizations');
-//       processed[key] = data[key]?.map(localization => 
+//       processed[key] = data[key]?.map(localization =>
 //         // Process each localization but prevent recursive localization processing
 //         ({...(processDataWithSchema(localization, schema, relations, alreadyProcessed, { processLocalizations: false, skipRelations: options.skipRelations, skipComponentRelations: options.skipComponentRelations })), documentId: localization.documentId})
 //       ) || [];
@@ -171,7 +182,7 @@ export async function exportDataV3({
 //       const relatedModel = getModel((attr as Schema.Attribute.RelationWithTarget).target);
 //       const relatedIdField = getIdentifierField(relatedModel);
 //       console.log(`Relation ${key} uses identifier field ${relatedIdField}`);
-      
+
 //       if (attr.relation.endsWith('Many') || attr.relation === 'manyWay') {
 //         processed[key] = data[key]?.map(item => {
 //           console.log('Processing relation item:', item);
@@ -200,9 +211,9 @@ export async function exportDataV3({
 //     } else if (isComponentAttribute(attr)) {
 //       const componentModel = getModel(attr.component);
 //       console.log(`Processing component ${key} with model ${componentModel.uid}`);
-      
+
 //       if (attr.repeatable) {
-//         processed[key] = data[key]?.map(item => 
+//         processed[key] = data[key]?.map(item =>
 //           processDataWithSchema(item, componentModel, relations, alreadyProcessed, { processLocalizations: options.processLocalizations, skipRelations: options.skipComponentRelations, skipComponentRelations: options.skipComponentRelations })
 //         ) || [];
 //       } else {
@@ -256,7 +267,7 @@ export async function exportDataV3({
 //     draft?: Record<string, any>;
 //     published?: Record<string, any>;
 //   } = {};
-  
+
 //   // // Process main entry
 //   // const mainLocale = entry.locale;
 //   // // If no locale field exists or we're not exporting all locales, use 'default'
@@ -288,7 +299,7 @@ export async function exportDataV3({
 
 //       // Find corresponding published localization
 //       const publishedLoc = publishedEntry?.localizations?.find(l => l.locale === locale);
-      
+
 //       const draftLocData = processEntry(draftLoc);
 //       const publishedLocData = publishedLoc ? processEntry(publishedLoc) : null;
 
@@ -325,19 +336,19 @@ export async function exportDataV3({
 // function areVersionsEqual(version1, version2, excludeFields = ['publishedAt']) {
 //   const v1 = { ...version1 };
 //   const v2 = { ...version2 };
-  
+
 //   excludeFields.forEach(field => {
 //     delete v1[field];
 //     delete v2[field];
 //   });
-  
+
 //   return JSON.stringify(v1) === JSON.stringify(v2);
 // }
 
 // function validateIdField(model) {
 //   const idField = getIdentifierField(model);
 //   const attribute = model.attributes[idField];
-  
+
 //   if (!attribute) {
 //     throw new Error(`IdField not found in model: Field '${idField}' is missing from model '${model.uid}'`);
 //   }
@@ -349,10 +360,6 @@ export async function exportDataV3({
 //       `Current settings - required: ${!!attribute.required}, unique: ${!!attribute.unique}`
 //     );
 //   }
-
-
-
-
 
 //   return idField;
 // }
@@ -421,14 +428,14 @@ export async function exportDataV3({
 //   // Process each draft entry and its corresponding published version
 //   for (const draftEntry of draftEntries) {
 //     console.log(`\nProcessing entry ${draftEntry.id}`);
-    
+
 //     // Get the published version using the same documentId
 //     const publishedEntry = await strapi.documents(currentSlug as UID.ContentType).findOne({
 //       documentId: draftEntry.documentId,
 //       status: 'published',
 //       populate: {
 //         ...populate,
-//         ...(options.exportAllLocales && { 
+//         ...(options.exportAllLocales && {
 //           localizations: {
 //             populate: populate
 //           }
@@ -437,11 +444,11 @@ export async function exportDataV3({
 //     });
 
 //     const versions = groupByLocale(draftEntry, publishedEntry, model, alreadyProcessed, relations, options.exportAllLocales, options.skipRelations, options.skipComponentRelations);
-    
+
 //     // Only add the entry if there are actual differences
 //     if (versions.draft || versions.published) {
 //       exportedData[currentSlug].push(versions);
-      
+
 //       if (!alreadyProcessed[currentSlug]) {
 //         alreadyProcessed[currentSlug] = [];
 //       }
@@ -463,18 +470,18 @@ export async function exportDataV3({
 //   deepPopulateComponentRelations = false
 // }) {
 //   console.log('exportDataV3 called with:', { slug, search, applySearch, exportPluginsContentTypes, documentIds });
-  
-//   const slugsToExport = 
-//     slug === CustomSlugs.WHOLE_DB ? 
-//     getAllSlugs({ includePluginsContentTypes: exportPluginsContentTypes }) : 
+
+//   const slugsToExport =
+//     slug === CustomSlugs.WHOLE_DB ?
+//     getAllSlugs({ includePluginsContentTypes: exportPluginsContentTypes }) :
 //     [CustomSlugToSlug[slug] || slug];
-  
+
 //   console.log('Slugs to export:', slugsToExport);
 
 //   const exportedData = {};
 //   let currentRelations: Relation = {};
 //   let alreadyProcessed: Relation = {};
-  
+
 //   for (const currentSlug of slugsToExport) {
 //     await exportSchema(currentSlug, exportedData, currentRelations, alreadyProcessed, {
 //       documentIds,
@@ -538,4 +545,4 @@ export async function exportDataV3({
 //   exportDataV3,
 //   getIdentifierField,
 //   processDataWithSchema
-// }; 
+// };

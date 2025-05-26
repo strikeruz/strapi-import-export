@@ -15,7 +15,9 @@ async function findOrImportFile(fileEntry, user, { allowedFileTypes }) {
   } else if (isObjectSafe(fileEntry)) {
     obj = fileEntry;
   } else {
-    throw new Error(`Invalid data format '${typeof fileEntry}' to import media. Only 'string', 'number', 'object' are accepted.`);
+    throw new Error(
+      `Invalid data format '${typeof fileEntry}' to import media. Only 'string', 'number', 'object' are accepted.`
+    );
   }
 
   // First try to find file with existing hash or name
@@ -41,7 +43,7 @@ async function findOrImportFile(fileEntry, user, { allowedFileTypes }) {
       if (!obj.hash) {
         obj.hash = fileData.hash;
       }
-      
+
       // Try finding again with the new hash/name
       file = await findFile(obj, user, allowedFileTypes);
       if (file && isExtensionAllowed(file.ext.substring(1), allowedFileTypes)) {
@@ -79,15 +81,29 @@ const findFile = async ({ hash, name, url, alternativeText, caption }, user, all
   if (!file && name) {
     //deprecated:
     // [file] = await strapi.entityService.findMany('plugin::upload.file', { filters: { name }, limit: 1 });
-    [file] = await strapi.documents('plugin::upload.file').findMany({ filters: { name }, limit: 1 });
+    [file] = await strapi
+      .documents('plugin::upload.file')
+      .findMany({ filters: { name }, limit: 1 });
   }
   if (!file && url) {
     const checkResult = isValidFileUrl(url, allowedFileTypes);
     if (checkResult.isValid) {
-      file = await findFile({ hash: checkResult.fileData.hash, name: checkResult.fileData.fileName }, user, allowedFileTypes);
+      file = await findFile(
+        { hash: checkResult.fileData.hash, name: checkResult.fileData.fileName },
+        user,
+        allowedFileTypes
+      );
 
       if (!file) {
-        file = await importFile({ url: checkResult.fileData.rawUrl, name: name, alternativeText: alternativeText, caption: caption }, user);
+        file = await importFile(
+          {
+            url: checkResult.fileData.rawUrl,
+            name: name,
+            alternativeText: alternativeText,
+            caption: caption,
+          },
+          user
+        );
       }
     }
   }
@@ -142,9 +158,8 @@ const importFile = async ({ url, name, alternativeText, caption }, user) => {
             },
           },
         },
-        { user },
+        { user }
       );
-
 
     return uploadedFile;
   } catch (err) {
@@ -228,7 +243,20 @@ const isExtensionAllowed = (ext, allowedFileTypes) => {
 
 // We should probably get the actual mime types, but that would require downloading the file before we can check it.
 const ALLOWED_AUDIOS = ['mp3', 'wav', 'ogg'];
-const ALLOWED_IMAGES = ['png', 'gif', 'jpg', 'jpeg', 'svg', 'bmp', 'tif', 'tiff', 'webp', 'heic', 'heif', 'ico'];
+const ALLOWED_IMAGES = [
+  'png',
+  'gif',
+  'jpg',
+  'jpeg',
+  'svg',
+  'bmp',
+  'tif',
+  'tiff',
+  'webp',
+  'heic',
+  'heif',
+  'ico',
+];
 const ALLOWED_VIDEOS = ['mp4', 'avi', 'webm', 'hevc', 'heifc'];
 
 /** See Strapi file allowedTypes for object keys. */
@@ -254,7 +282,10 @@ const getFileDataFromRawUrl = (rawUrl) => {
 
   const name = trim(parsedUrl.pathname, '/').replace(/\//g, '-');
   const extension = parsedUrl.pathname.split('.').pop()?.toLowerCase() || '';
-  const hash = strings.nameToSlug(name.slice(0, -(extension.length + 1)) || '', { separator: '_', lowercase: false });
+  const hash = strings.nameToSlug(name.slice(0, -(extension.length + 1)) || '', {
+    separator: '_',
+    lowercase: false,
+  });
 
   return {
     hash,

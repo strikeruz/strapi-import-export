@@ -23,6 +23,7 @@ const filterAttribute = (attr) => {
 
 const filterType = (attr) => !['relation', 'component', 'dynamiczone'].includes(attr.type);
 
-const filterName = (attr) => !['createdAt', 'updatedAt', 'publishedAt', 'locale'].includes(attr.name);
+const filterName = (attr) =>
+  !['createdAt', 'updatedAt', 'publishedAt', 'locale'].includes(attr.name);
 
 export default ({ strapi }) => getModelAttributesEndpoint;

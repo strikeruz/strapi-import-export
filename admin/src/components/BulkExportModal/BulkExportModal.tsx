@@ -1,7 +1,5 @@
 import { Download } from '@strapi/icons';
-import {
-  useQueryParams,
-} from '@strapi/admin/strapi-admin';
+import { useQueryParams } from '@strapi/admin/strapi-admin';
 import { Modal } from '@strapi/design-system';
 
 import React from 'react';
@@ -16,7 +14,6 @@ const ExportAction: BulkActionComponent = ({ documents, model, collectionType })
   const [{ query }] = useQueryParams<{ plugins?: { i18n?: { locale?: string } } }>();
   const params = React.useMemo(() => buildValidParams(query), [query]);
   const documentIds = documents.map(({ documentId }) => documentId);
-
 
   const state = useExportModal({ unavailableOptions: ['exportPluginsContentTypes'], documentIds });
 
@@ -36,10 +33,11 @@ const ExportAction: BulkActionComponent = ({ documents, model, collectionType })
       type: 'modal',
       title: i18n('plugin.cta.export', 'Export'),
       content: <ExportModalContent state={state} />,
-      footer:
-          <Modal.Footer>
-            <ExportModalFooter state={state} />
-          </Modal.Footer>
+      footer: (
+        <Modal.Footer>
+          <ExportModalFooter state={state} />
+        </Modal.Footer>
+      ),
     },
   };
 };

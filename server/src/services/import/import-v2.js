@@ -5,7 +5,14 @@ import pick from 'lodash/pick';
 import castArray from 'lodash/castArray';
 import { extract, toArray } from '../../../libs/arrays.js';
 import { ObjectBuilder } from '../../../libs/objects.js';
-import { getModel, getModelAttributes, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribute, isRelationAttribute } from '../../utils/models';
+import {
+  getModel,
+  getModelAttributes,
+  isComponentAttribute,
+  isDynamicZoneAttribute,
+  isMediaAttribute,
+  isRelationAttribute,
+} from '../../utils/models';
 import { head, toPairs } from 'lodash';
 import { findOrImportFile } from './utils/file.js';
 
@@ -31,14 +38,7 @@ class IdMapper {
  * Import data.
  * @returns {Promise<ImportDataRes>}
  */
-const importDataV2 = async (
-  fileContent,
-  {
-    slug: slugArg,
-    user,
-    idField,
-  },
-) => {
+const importDataV2 = async (fileContent, { slug: slugArg, user, idField }) => {
   const { data } = fileContent;
 
   const slugs = Object.keys(data);
@@ -90,7 +90,9 @@ const importDataV2 = async (
     for (const slugFromFile of slugs) {
       const model = getModel(slugFromFile);
       // TODO: handle case when `id` is not a number;
-      await strapi.db.connection.raw(`SELECT SETVAL((SELECT PG_GET_SERIAL_SEQUENCE('${model.collectionName}', 'id')), (SELECT MAX(id) FROM ${model.collectionName}) + 1, FALSE);`);
+      await strapi.db.connection.raw(
+        `SELECT SETVAL((SELECT PG_GET_SERIAL_SEQUENCE('${model.collectionName}', 'id')), (SELECT MAX(id) FROM ${model.collectionName}) + 1, FALSE);`
+      );
     }
   }
 
@@ -99,9 +101,15 @@ const importDataV2 = async (
 
 function splitSlugs(slugs) {
   const slugsToProcess = [...slugs];
-  const componentSlugs = extract(slugsToProcess, (slug) => getModel(slug)?.modelType === 'component');
+  const componentSlugs = extract(
+    slugsToProcess,
+    (slug) => getModel(slug)?.modelType === 'component'
+  );
   const mediaSlugs = extract(slugsToProcess, (slug) => ['plugin::upload.file'].includes(slug));
-  const contentTypeSlugs = extract(slugsToProcess, (slug) => getModel(slug)?.modelType === 'contentType');
+  const contentTypeSlugs = extract(
+    slugsToProcess,
+    (slug) => getModel(slug)?.modelType === 'contentType'
+  );
 
   if (slugsToProcess.length > 0) {
     strapi.log.warn(`Some slugs won't be imported: ${slugsToProcess.join(', ')}`);
@@ -138,14 +146,7 @@ const importMedia = async (slugEntries, { user, fileIdToDbId }) => {
 
 const importContentTypeSlug = async (
   slugEntries,
-  {
-    slug,
-    user,
-    idField,
-    importStage,
-    fileIdToDbId,
-    componentsDataStore,
-  },
+  { slug, user, idField, importStage, fileIdToDbId, componentsDataStore }
 ) => {
   let fileEntries = toPairs(slugEntries);
 
@@ -170,7 +171,11 @@ const importContentTypeSlug = async (
   const failures = [];
   for (let [fileId, fileEntry] of fileEntries) {
     try {
-      await updateOrCreate(user, slug, fileId, fileEntry, idField, { importStage, fileIdToDbId, componentsDataStore });
+      await updateOrCreate(user, slug, fileId, fileEntry, idField, {
+        importStage,
+        fileIdToDbId,
+        componentsDataStore,
+      });
     } catch (err) {
       strapi.log.error(err);
       failures.push({ error: err, data: fileEntry });
@@ -188,7 +193,7 @@ const updateOrCreate = async (
   fileId,
   fileEntryArg,
   idFieldArg,
-  { importStage, fileIdToDbId, componentsDataStore },
+  { importStage, fileIdToDbId, componentsDataStore }
 ) => {
   const schema = getModel(slug);
   const idField = idFieldArg || schema?.pluginOptions?.['import-export-entries']?.idField || 'id';
@@ -204,7 +209,9 @@ const updateOrCreate = async (
     fileEntry = pick(fileEntry, attributeNames);
   } else if (importStage === 'relationAttributes') {
     fileEntry = setComponents(schema, fileEntry, { fileIdToDbId, componentsDataStore });
-    const attributeNames = getModelAttributes(slug, { filterType: ['component', 'dynamiczone', 'relation'] })
+    const attributeNames = getModelAttributes(slug, {
+      filterType: ['component', 'dynamiczone', 'relation'],
+    })
       .map(({ name }) => name)
       .concat('id', 'localizations', 'locale');
     fileEntry = pick(fileEntry, attributeNames);
@@ -212,9 +219,16 @@ const updateOrCreate = async (
 
   let dbEntry = null;
   if (schema?.modelType === 'contentType' && schema?.kind === 'singleType') {
-    dbEntry = await updateOrCreateSingleTypeEntry(user, slug, fileId, fileEntry, { importStage, fileIdToDbId });
+    dbEntry = await updateOrCreateSingleTypeEntry(user, slug, fileId, fileEntry, {
+      importStage,
+      fileIdToDbId,
+    });
   } else {
-    dbEntry = await updateOrCreateCollectionTypeEntry(user, slug, fileId, fileEntry, { idField, importStage, fileIdToDbId });
+    dbEntry = await updateOrCreateCollectionTypeEntry(user, slug, fileId, fileEntry, {
+      idField,
+      importStage,
+      fileIdToDbId,
+    });
   }
   if (dbEntry) {
     fileIdToDbId.setMapping(slug, fileId, dbEntry.id);
@@ -266,11 +280,7 @@ function removeComponents(schema, fileEntry) {
   return { ...fileEntry, ...(store || {}) };
 }
 
-function setComponents(
-  schema,
-  fileEntry,
-  { fileIdToDbId, componentsDataStore },
-) {
+function setComponents(schema, fileEntry, { fileIdToDbId, componentsDataStore }) {
   const store = {};
   for (const [attributeName, attribute] of Object.entries(schema.attributes)) {
     const attributeValue = fileEntry[attributeName];
@@ -279,24 +289,28 @@ function setComponents(
     } else if (isComponentAttribute(attribute)) {
       if (attribute.repeatable) {
         store[attributeName] = attributeValue.map((componentFileId) =>
-          getComponentData(attribute.component, `${componentFileId}`, { fileIdToDbId, componentsDataStore }),
+          getComponentData(attribute.component, `${componentFileId}`, {
+            fileIdToDbId,
+            componentsDataStore,
+          })
         );
       } else {
-        store[attributeName] = getComponentData(attribute.component, `${attributeValue}`, { fileIdToDbId, componentsDataStore });
+        store[attributeName] = getComponentData(attribute.component, `${attributeValue}`, {
+          fileIdToDbId,
+          componentsDataStore,
+        });
       }
     } else if (isDynamicZoneAttribute(attribute)) {
-      store[attributeName] = attributeValue.map(({ __component, id }) => getComponentData(__component, `${id}`, { fileIdToDbId, componentsDataStore }));
+      store[attributeName] = attributeValue.map(({ __component, id }) =>
+        getComponentData(__component, `${id}`, { fileIdToDbId, componentsDataStore })
+      );
     }
   }
 
   return { ...fileEntry, ...(store || {}) };
 }
 
-function getComponentData(
-  slug,
-  fileId,
-  { fileIdToDbId, componentsDataStore },
-) {
+function getComponentData(slug, fileId, { fileIdToDbId, componentsDataStore }) {
   const schema = getModel(slug);
   const fileEntry = componentsDataStore[slug][`${fileId}`];
 
@@ -316,30 +330,47 @@ function getComponentData(
     if (isComponentAttribute(attribute)) {
       if (attribute.repeatable) {
         store[attributeName] = attributeValue.map((componentFileId) =>
-          getComponentData(attribute.component, `${componentFileId}`, { fileIdToDbId, componentsDataStore }),
+          getComponentData(attribute.component, `${componentFileId}`, {
+            fileIdToDbId,
+            componentsDataStore,
+          })
         );
       } else {
-        store[attributeName] = getComponentData(attribute.component, `${attributeValue}`, { fileIdToDbId, componentsDataStore });
+        store[attributeName] = getComponentData(attribute.component, `${attributeValue}`, {
+          fileIdToDbId,
+          componentsDataStore,
+        });
       }
     } else if (isDynamicZoneAttribute(attribute)) {
-      store[attributeName] = attributeValue.map(({ __component, id }) => getComponentData(__component, `${id}`, { fileIdToDbId, componentsDataStore }));
+      store[attributeName] = attributeValue.map(({ __component, id }) =>
+        getComponentData(__component, `${id}`, { fileIdToDbId, componentsDataStore })
+      );
     } else if (isMediaAttribute(attribute)) {
       if (attribute.multiple) {
-        store[attributeName] = attributeValue.map((id) => fileIdToDbId.getMapping('plugin::upload.file', id));
+        store[attributeName] = attributeValue.map((id) =>
+          fileIdToDbId.getMapping('plugin::upload.file', id)
+        );
       } else {
         store[attributeName] = fileIdToDbId.getMapping('plugin::upload.file', attributeValue);
       }
     } else if (isRelationAttribute(attribute)) {
       if (attribute.relation.endsWith('Many')) {
-        store[attributeName] = attributeValue.map((id) => fileIdToDbId.getMapping(attribute.target, id));
+        store[attributeName] = attributeValue.map((id) =>
+          fileIdToDbId.getMapping(attribute.target, id)
+        );
       } else {
         store[attributeName] = fileIdToDbId.getMapping(attribute.target, attributeValue);
       }
     } else if (isMediaAttribute(attribute)) {
       if (attribute.multiple) {
-        store[attributeName] = castArray(attributeValue).map((id) => fileIdToDbId.getMapping('plugin::upload.file', id));
+        store[attributeName] = castArray(attributeValue).map((id) =>
+          fileIdToDbId.getMapping('plugin::upload.file', id)
+        );
       } else {
-        store[attributeName] = fileIdToDbId.getMapping('plugin::upload.file', `${head(castArray(attributeValue))}`);
+        store[attributeName] = fileIdToDbId.getMapping(
+          'plugin::upload.file',
+          `${head(castArray(attributeValue))}`
+        );
       }
     }
   }
@@ -352,7 +383,7 @@ const updateOrCreateCollectionTypeEntry = async (
   slug,
   fileId,
   fileEntry,
-  { idField, importStage, fileIdToDbId },
+  { idField, importStage, fileIdToDbId }
 ) => {
   const schema = getModel(slug);
 
@@ -379,12 +410,14 @@ const updateOrCreateCollectionTypeEntry = async (
       // return strapi.entityService.update(slug, dbEntry.id, { data: omit(fileEntry, ['id']) });
       return strapi.documents(slug).update({
         documentId: dbEntry.id,
-        data: omit(fileEntry, ['id'])
+        data: omit(fileEntry, ['id']),
       });
     }
   } else {
     if (!fileEntry.locale) {
-      throw new Error(`No locale set to import entry for slug ${slug} (data ${JSON.stringify(fileEntry)})`);
+      throw new Error(
+        `No locale set to import entry for slug ${slug} (data ${JSON.stringify(fileEntry)})`
+      );
     }
 
     const defaultLocale = await strapi.plugin('i18n').service('locales').getDefaultLocale();
@@ -399,7 +432,8 @@ const updateOrCreateCollectionTypeEntry = async (
         // If `dbEntry` has been found, `dbEntry` holds the data for the default locale and
         // the data for other locales in its `localizations` attribute.
         const localizedEntries = [dbEntry, ...(dbEntry?.localizations || [])];
-        dbEntryDefaultLocaleId = localizedEntries.find((e) => e.locale === defaultLocale)?.id || null;
+        dbEntryDefaultLocaleId =
+          localizedEntries.find((e) => e.locale === defaultLocale)?.id || null;
         dbEntry = localizedEntries.find((e) => e.locale === fileEntry.locale) || null;
       } else {
         // Otherwise try to find dbEntry for default locale through localized siblings.
@@ -407,10 +441,16 @@ const updateOrCreateCollectionTypeEntry = async (
         const fileLocalizationsIds = fileEntry?.localizations || [];
         while (idx < fileLocalizationsIds.length && !dbEntryDefaultLocaleId && !dbEntry) {
           const dbId = fileIdToDbId.getMapping(slug, fileLocalizationsIds[idx]);
-          const localizedEntry = await strapi.db.query(slug).findOne({ where: { id: dbId }, populate: ['localizations'] });
-          const localizedEntries = localizedEntry != null ? [localizedEntry, ...(localizedEntry?.localizations || [])] : [];
+          const localizedEntry = await strapi.db
+            .query(slug)
+            .findOne({ where: { id: dbId }, populate: ['localizations'] });
+          const localizedEntries =
+            localizedEntry != null
+              ? [localizedEntry, ...(localizedEntry?.localizations || [])]
+              : [];
           if (!dbEntryDefaultLocaleId) {
-            dbEntryDefaultLocaleId = localizedEntries.find((e) => e.locale === defaultLocale)?.id || null;
+            dbEntryDefaultLocaleId =
+              localizedEntries.find((e) => e.locale === defaultLocale)?.id || null;
           }
           if (!dbEntry) {
             dbEntry = localizedEntries.find((e) => e.locale === fileEntry.locale) || null;
@@ -427,7 +467,7 @@ const updateOrCreateCollectionTypeEntry = async (
 
     if (isDatumInDefaultLocale) {
       if (!dbEntryDefaultLocaleId) {
-        // deprecated:  
+        // deprecated:
         // return strapi.entityService.create(slug, { data: fileEntry });
         return strapi.documents(slug).create({
           data: fileEntry,
@@ -442,12 +482,20 @@ const updateOrCreateCollectionTypeEntry = async (
       }
     } else {
       if (!dbEntryDefaultLocaleId) {
-        throw new Error(`Could not find default locale entry to import localization for slug ${slug} (data ${JSON.stringify(fileEntry)})`);
+        throw new Error(
+          `Could not find default locale entry to import localization for slug ${slug} (data ${JSON.stringify(fileEntry)})`
+        );
       }
 
       if (!dbEntry) {
-        const insertLocalizedEntry = strapi.plugin('i18n').service('core-api').createCreateLocalizationHandler(getModel(slug));
-        return insertLocalizedEntry({ id: dbEntryDefaultLocaleId, data: omit({ ...fileEntry }, ['id']) });
+        const insertLocalizedEntry = strapi
+          .plugin('i18n')
+          .service('core-api')
+          .createCreateLocalizationHandler(getModel(slug));
+        return insertLocalizedEntry({
+          id: dbEntryDefaultLocaleId,
+          data: omit({ ...fileEntry }, ['id']),
+        });
       } else {
         // deprecated:
         // return strapi.entityService.update(slug, dbEntry.id, { data: omit({ ...fileEntry }, ['id']) });
@@ -465,7 +513,7 @@ const updateOrCreateSingleTypeEntry = async (
   slug,
   fileId,
   fileEntry,
-  { importStage, fileIdToDbId },
+  { importStage, fileIdToDbId }
 ) => {
   const schema = getModel(slug);
 
@@ -498,7 +546,9 @@ const updateOrCreateSingleTypeEntry = async (
       return null;
     }
 
-    let entryDefaultLocale = await strapi.db.query(slug).findOne({ where: { locale: defaultLocale } });
+    let entryDefaultLocale = await strapi.db
+      .query(slug)
+      .findOne({ where: { locale: defaultLocale } });
     if (!entryDefaultLocale) {
       // deprecated:
       // entryDefaultLocale = await strapi.entityService.create(slug, { data: { ...fileEntry, locale: defaultLocale } });
@@ -523,17 +573,20 @@ const updateOrCreateSingleTypeEntry = async (
         });
       }
     } else {
-      const entryLocale = await strapi.db.query(slug).findOne({ where: { locale: fileEntry.locale } });
+      const entryLocale = await strapi.db
+        .query(slug)
+        .findOne({ where: { locale: fileEntry.locale } });
       let datumLocale = { ...entryLocale, ...fileEntry };
 
       await strapi.db.query(slug).delete({ where: { locale: fileEntry.locale } });
 
-      const insertLocalizedEntry = strapi.plugin('i18n').service('core-api').createCreateLocalizationHandler(getModel(slug));
+      const insertLocalizedEntry = strapi
+        .plugin('i18n')
+        .service('core-api')
+        .createCreateLocalizationHandler(getModel(slug));
       return insertLocalizedEntry({ id: entryDefaultLocale.id, data: datumLocale });
     }
   }
 };
 
-export {
-  importDataV2,
-};
+export { importDataV2 };

@@ -54,7 +54,9 @@ const importMedia = async (fileData, { user }) => {
     processed.push(res);
   }
 
-  const failures = processed.filter((p) => !p.success).map((f) => ({ error: f.error, data: f.args[0] }));
+  const failures = processed
+    .filter((p) => !p.success)
+    .map((f) => ({ error: f.error, data: f.args[0] }));
 
   return {
     failures,
@@ -75,7 +77,9 @@ const importOtherSlug = async (data, { slug, user, idField }) => {
     processed.push(res);
   }
 
-  const failures = processed.filter((p) => !p.success).map((f) => ({ error: f.error, data: f.args[0] }));
+  const failures = processed
+    .filter((p) => !p.success)
+    .map((f) => ({ error: f.error, data: f.args[0] }));
 
   return {
     failures,
@@ -91,7 +95,9 @@ const importOtherSlug = async (data, { slug, user, idField }) => {
  * @returns Updated/created entry.
  */
 const updateOrCreate = async (user, slug, data, idField = 'id') => {
-  const relationAttributes = getModelAttributes(slug, { filterType: ['component', 'dynamiczone', 'media', 'relation'] });
+  const relationAttributes = getModelAttributes(slug, {
+    filterType: ['component', 'dynamiczone', 'media', 'relation'],
+  });
   for (let attribute of relationAttributes) {
     data[attribute.name] = await updateOrCreateRelation(user, attribute, data[attribute.name]);
   }
@@ -186,7 +192,9 @@ const updateOrCreateRelation = async (user, rel, relData) => {
     relData = rel.multiple ? relData : relData.slice(0, 1);
     const entryIds = [];
     for (const relDatum of relData) {
-      const media = await findOrImportFile(relDatum, user, { allowedFileTypes: rel.allowedTypes ?? ['any'] });
+      const media = await findOrImportFile(relDatum, user, {
+        allowedFileTypes: rel.allowedTypes ?? ['any'],
+      });
       if (media?.id) {
         entryIds.push(media.id);
       }
@@ -212,6 +220,4 @@ const updateOrCreateRelation = async (user, rel, relData) => {
   throw new Error(`Could not update or create relation of type ${rel.type}.`);
 };
 
-export {
-  importData,
-};
+export { importData };

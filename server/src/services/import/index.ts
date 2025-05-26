@@ -4,7 +4,6 @@ import { importDataV3 } from './import-v3';
 import { parseInputData } from './parsers';
 import { sseManager } from './sse-manager';
 
-
 let importInProgress = false;
 
 const isImportInProgress = () => {
@@ -28,18 +27,18 @@ const wrappedImportDataV3 = async (fileContent, options, progressOptions) => {
   if (progressOptions?.useSSE && importInProgress) {
     throw new Error('An import is already in progress');
   }
-  
+
   if (progressOptions?.useSSE) {
     setImportInProgress(true);
-    
+
     try {
       const result = await importDataV3(fileContent, options, progressOptions);
-      
+
       // If we're not doing background processing, we're done
       if (!result.backgroundProcessing) {
         setImportInProgress(false);
       }
-      
+
       return result;
     } catch (error) {
       setImportInProgress(false);

@@ -1,5 +1,5 @@
 import type { Core } from '@strapi/strapi';
-import {PLUGIN_ID} from '../../admin/src/pluginId';
+import { PLUGIN_ID } from '../../admin/src/pluginId';
 
 const actions = [
   {
@@ -17,7 +17,6 @@ const actions = [
 ];
 
 const bootstrap = ({ strapi }: { strapi: Core.Strapi }) => {
-  
   strapi.admin.services.permission.actionProvider.registerMany(actions);
   // bootstrap phase
 };

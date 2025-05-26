@@ -3,7 +3,11 @@ import { toArray } from '../../libs/arrays.js';
 
 export function getAllSlugs({ includePluginsContentTypes = false } = {}) {
   return Array.from(strapi.db.metadata)
-    .filter(([collectionName]) => collectionName.startsWith('api::') || (includePluginsContentTypes && collectionName.startsWith('plugin::')))
+    .filter(
+      ([collectionName]) =>
+        collectionName.startsWith('api::') ||
+        (includePluginsContentTypes && collectionName.startsWith('plugin::'))
+    )
     .map(([collectionName]) => collectionName);
 }
 

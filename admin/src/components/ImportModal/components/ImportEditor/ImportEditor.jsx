@@ -1,4 +1,13 @@
-import { Box, Tabs, Typography, Grid, Field, SingleSelect, SingleSelectOption, Checkbox } from '@strapi/design-system';
+import {
+  Box,
+  Tabs,
+  Typography,
+  Grid,
+  Field,
+  SingleSelect,
+  SingleSelectOption,
+  Checkbox,
+} from '@strapi/design-system';
 import React, { useEffect, useState } from 'react';
 import { useFetchClient } from '@strapi/admin/strapi-admin'; // Import useFetchClient hook
 import { PLUGIN_ID } from '../../../../pluginId'; // Ensure PLUGIN_ID is correctly imported
@@ -7,25 +16,26 @@ import { useForm } from '../../../../hooks/useForm';
 import { useI18n } from '../../../../hooks/useI18n';
 import { Editor } from '../../../Editor/Editor';
 
-export const ImportEditor = ({ 
-  file, 
-  data, 
-  dataFormat, 
-  slug, 
-  onDataChanged, 
+export const ImportEditor = ({
+  file,
+  data,
+  dataFormat,
+  slug,
+  onDataChanged,
   onOptionsChanged,
-  version 
+  version,
 }) => {
   const { i18n } = useI18n();
   const [attributeNames, setAttributeNames] = useState([]);
   const fetchClient = useFetchClient(); // Use the hook here within the component
 
-  const { options, getOption, setOption } = useForm({ 
+  const { options, getOption, setOption } = useForm({
     idField: 'id',
     existingAction: 'warn',
     ignoreMissingRelations: false,
     allowLocaleUpdates: false,
     disallowNewRelations: false,
+    createMissingEntities: false,
   });
 
   const getCookieValue = (name) => {
@@ -51,7 +61,7 @@ export const ImportEditor = ({
     if (fromSessionStorage) {
       return JSON.parse(fromSessionStorage);
     }
-  
+
     const fromCookie = getCookieValue('jwtToken');
     return fromCookie ?? null;
   };
@@ -67,7 +77,9 @@ export const ImportEditor = ({
       const { get } = fetchClient;
       console.log('slug', slug);
       try {
-        const resData = await get(`/${PLUGIN_ID}/import/model-attributes/${slug}`, { headers: { 'Authorization': `Bearer ${getToken()}` }});
+        const resData = await get(`/${PLUGIN_ID}/import/model-attributes/${slug}`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
         console.log('resData', resData);
         setAttributeNames(resData?.data?.data?.attribute_names);
       } catch (error) {
@@ -85,7 +97,6 @@ export const ImportEditor = ({
 
   return (
     <Tabs.Root defaultValue="file">
-      
       <Tabs.List aria-label="Import editor">
         <Tabs.Trigger value="file">{i18n('plugin.import.tab.file')}</Tabs.Trigger>
         <Tabs.Trigger value="options">{i18n('plugin.import.tab.options')}</Tabs.Trigger>
@@ -188,6 +199,17 @@ export const ImportEditor = ({
               </>
             )}
 
+            <Grid.Item>
+              <Field.Root hint={i18n('plugin.form.field.create-missing-entities.hint')}>
+                <Checkbox
+                  checked={getOption('createMissingEntities')}
+                  onCheckedChange={(value) => setOption('createMissingEntities', value === true)}
+                >
+                  {i18n('plugin.form.field.create-missing-entities.label')}
+                </Checkbox>
+                <Field.Hint />
+              </Field.Root>
+            </Grid.Item>
           </Grid.Root>
         </Box>
       </Tabs.Content>

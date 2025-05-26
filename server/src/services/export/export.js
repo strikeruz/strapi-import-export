@@ -32,10 +32,17 @@ const dataConverterConfigs = {
  * @param {number} options.deepness
  * @returns {Promise<string>}
  */
-const exportData = async ({ slug, search, applySearch, exportFormat, relationsAsId, deepness = 5 }) => {
+const exportData = async ({
+  slug,
+  search,
+  applySearch,
+  exportFormat,
+  relationsAsId,
+  deepness = 5,
+}) => {
   const slugToProcess = CustomSlugToSlug[slug] || slug;
   const queryBuilder = new ObjectBuilder();
-  
+
   //fails in here
   queryBuilder.extend(getPopulateFromSchema(slugToProcess, deepness));
   if (applySearch) {
@@ -144,8 +151,4 @@ const getModelPopulationAttributes = (model) => {
   return model.attributes;
 };
 
-export {
-  dataFormats as formats,
-  exportData,
-  getPopulateFromSchema,
-};
+export { dataFormats as formats, exportData, getPopulateFromSchema };

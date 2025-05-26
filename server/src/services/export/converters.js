@@ -6,8 +6,14 @@ import { getModelAttributes, getModel } from '../../utils/models';
 
 const convertToCsv = (entries, options) => {
   entries = toArray(entries);
-  const columnTitles = ['id'].concat(getModelAttributes(options.slug, { filterOutTarget: ['admin::user'] }).map((attr) => attr.name));
-  const content = [convertStrArrayToCsv(columnTitles)].concat(entries.map((entry) => convertEntryToStrArray(entry, columnTitles)).map(convertStrArrayToCsv)).join('\r\n');
+  const columnTitles = ['id'].concat(
+    getModelAttributes(options.slug, { filterOutTarget: ['admin::user'] }).map((attr) => attr.name)
+  );
+  const content = [convertStrArrayToCsv(columnTitles)]
+    .concat(
+      entries.map((entry) => convertEntryToStrArray(entry, columnTitles)).map(convertStrArrayToCsv)
+    )
+    .join('\r\n');
   return content;
 };
 
@@ -68,8 +74,14 @@ const exportMedia = (entries, options) => {
     return entries;
   }
 
-  const mediaKeys = getModelAttributes(options.slug, { filterOutTarget: ['admin::user'], filterType: ['media'] }).map((attr) => attr.name);
-  const relationsAttr = getModelAttributes(options.slug, { filterOutTarget: ['admin::user'], filterType: ['component', 'dynamiczone', 'relation'] });
+  const mediaKeys = getModelAttributes(options.slug, {
+    filterOutTarget: ['admin::user'],
+    filterType: ['media'],
+  }).map((attr) => attr.name);
+  const relationsAttr = getModelAttributes(options.slug, {
+    filterOutTarget: ['admin::user'],
+    filterType: ['component', 'dynamiczone', 'relation'],
+  });
 
   entries = entries.map((entry) => {
     mediaKeys.forEach((key) => {
@@ -89,12 +101,16 @@ const exportMedia = (entries, options) => {
       if (attr.type === 'component') {
         if (entry[attr.name]) {
           const areMultiple = attr.repeatable;
-          const relEntriesProcessed = exportMedia(toArray(entry[attr.name]), { slug: attr.component });
+          const relEntriesProcessed = exportMedia(toArray(entry[attr.name]), {
+            slug: attr.component,
+          });
           entry[attr.name] = areMultiple ? relEntriesProcessed : relEntriesProcessed?.[0] || null;
         }
       } else if (attr.type === 'dynamiczone') {
         if (entry[attr.name]) {
-          entry[attr.name] = entry[attr.name].map((component) => exportMedia([component], { slug: component.__component })?.[0] || null);
+          entry[attr.name] = entry[attr.name].map(
+            (component) => exportMedia([component], { slug: component.__component })?.[0] || null
+          );
         }
       } else if (attr.type === 'relation') {
         if (entry[attr.name]) {
@@ -116,9 +132,10 @@ const computeUrl = (relativeUrl) => {
 };
 
 const exportRelationsAsId = (entries, options) => {
-  const relationKeys = getModelAttributes(options.slug, { filterOutTarget: ['admin::user'], filterType: ['component', 'dynamiczone', 'media', 'relation'] }).map(
-    (attr) => attr,
-  );
+  const relationKeys = getModelAttributes(options.slug, {
+    filterOutTarget: ['admin::user'],
+    filterType: ['component', 'dynamiczone', 'media', 'relation'],
+  }).map((attr) => attr);
 
   return entries.map((entry) => {
     relationKeys.forEach((key) => {
