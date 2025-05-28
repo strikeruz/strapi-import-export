@@ -648,11 +648,86 @@ export const ImportModal = ({ onClose }) => {
                           </Accordion.Trigger>
                         </Accordion.Header>
                         <Accordion.Content>
-                          <Typography display="block" tag="pre" padding={4}>
-                            {typeof error.data?.entry === 'string'
-                              ? error.data?.entry
-                              : JSON.stringify(error.data?.entry || '', null, 2)}
-                          </Typography>
+                          <Box padding={4}>
+                            <Typography fontWeight="bold" marginBottom={2}>
+                              Entry Value:
+                            </Typography>
+                            <Typography
+                              display="block"
+                              tag="pre"
+                              marginBottom={3}
+                              padding={2}
+                              background="neutral100"
+                            >
+                              {typeof error.data?.entry === 'string'
+                                ? error.data?.entry
+                                : JSON.stringify(error.data?.entry || '', null, 2)}
+                            </Typography>
+
+                            {error.details && (
+                              <>
+                                <Typography fontWeight="bold" marginBottom={2}>
+                                  Search Details:
+                                </Typography>
+                                <Box marginBottom={2}>
+                                  {error.details.searchDetails && (
+                                    <Box padding={2} background="neutral100" marginBottom={2}>
+                                      <Typography variant="omega" fontWeight="semiBold">
+                                        Search Information:
+                                      </Typography>
+                                      <Typography variant="pi">
+                                        • Content Type: {error.details.searchDetails.contentType}
+                                      </Typography>
+                                      <Typography variant="pi">
+                                        • Search Field: {error.details.searchDetails.searchField}
+                                      </Typography>
+                                      <Typography variant="pi">
+                                        • Is Localized:{' '}
+                                        {error.details.searchDetails.isLocalized ? 'Yes' : 'No'}
+                                      </Typography>
+                                      {error.details.searchDetails.searchedLocales && (
+                                        <Typography variant="pi">
+                                          • Searched Locales:{' '}
+                                          {error.details.searchDetails.searchedLocales.join(', ')}
+                                        </Typography>
+                                      )}
+                                      {error.details.searchDetails.triedVariations &&
+                                        error.details.searchDetails.triedVariations.length > 1 && (
+                                          <Typography variant="pi">
+                                            • Tried Variations:{' '}
+                                            {error.details.searchDetails.triedVariations.join(', ')}
+                                          </Typography>
+                                        )}
+                                    </Box>
+                                  )}
+
+                                  {error.details.relationTarget && (
+                                    <Box padding={2} background="neutral100" marginBottom={2}>
+                                      <Typography variant="omega" fontWeight="semiBold">
+                                        Relation Information:
+                                      </Typography>
+                                      <Typography variant="pi">
+                                        • Target: {error.details.relationTarget}
+                                      </Typography>
+                                      <Typography variant="pi">
+                                        • Locale: {error.details.locale || 'not specified'}
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                </Box>
+
+                                <Typography
+                                  display="block"
+                                  tag="pre"
+                                  padding={2}
+                                  background="neutral50"
+                                  fontSize={1}
+                                >
+                                  {JSON.stringify(error.details, null, 2)}
+                                </Typography>
+                              </>
+                            )}
+                          </Box>
                         </Accordion.Content>
                       </Accordion.Item>
                     ))}

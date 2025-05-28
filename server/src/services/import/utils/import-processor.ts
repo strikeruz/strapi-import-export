@@ -22,6 +22,8 @@ export class ImportProcessor {
   private processedEntries: number = 0;
   // Cache для созданных в этом импорте сущностей, чтобы избежать дублирования
   private createdEntitiesCache: Map<string, string> = new Map();
+  // Current processing path for error tracking
+  private currentProcessingPath: string = '';
 
   constructor(
     context: ImportContext,
@@ -294,6 +296,7 @@ export class ImportProcessor {
           'api::card.card',
           'api::faq.faq',
           'api::faq-category.faq-category',
+          'api::modal.modal',
         ];
 
         if (contentTypesWithTitles.includes(contentType)) {
@@ -369,7 +372,9 @@ export class ImportProcessor {
       const processedData = await this.processEntryData(
         firstData,
         model,
-        firstLocale === 'default' ? undefined : firstLocale
+        firstLocale === 'default' ? undefined : firstLocale,
+        options.status,
+        contentType
       );
       const sanitizedData = this.sanitizeData(processedData, model);
 
@@ -527,6 +532,40 @@ export class ImportProcessor {
               );
               return null;
             }
+          } else if (
+            error.message?.includes('Document with id') &&
+            error.message?.includes('not found')
+          ) {
+            // Handle "Document with id not found" errors - likely unprocessed modal references
+            logger.error(`❌ Document not found error - possible unprocessed modal reference`, {
+              ...context,
+              error: error.message,
+              hint: 'This usually indicates a modal reference was not properly converted to an ID',
+            });
+
+            // Try to extract the problematic ID from the error message
+            const idMatch = error.message.match(/Document with id "([^"]+)"/);
+            if (idMatch) {
+              const problematicId = idMatch[1];
+              logger.error(`❌ Problematic ID found in data: "${problematicId}"`, {
+                ...context,
+                problematicId,
+                suggestion: 'Check if this is a modal name that should be converted to an ID',
+              });
+
+              // Add this to failures with additional context
+              this.context.addFailure(
+                `Document not found: "${problematicId}" - likely an unprocessed modal reference`,
+                {
+                  ...versionData,
+                  problematicId,
+                  hint: 'This modal name was not properly converted to a database ID',
+                }
+              );
+            } else {
+              this.context.addFailure(`Document not found error: ${error.message}`, versionData);
+            }
+            return null;
           } else {
             // Re-throw non-unique constraint errors
             logger.error(`Error creating entry for ${contentType}`, {
@@ -598,7 +637,9 @@ export class ImportProcessor {
       const processedLocale = await this.processEntryData(
         localeData,
         model,
-        locale === 'default' ? undefined : locale
+        locale === 'default' ? undefined : locale,
+        options.status,
+        contentType
       );
       const sanitizedLocaleData = this.sanitizeData(processedLocale, model);
 
@@ -695,9 +736,21 @@ export class ImportProcessor {
     return documentId;
   }
 
-  private async processEntryData(data: any, model: Schema.Schema, locale?: string): Promise<any> {
+  private async processEntryData(
+    data: any,
+    model: Schema.Schema,
+    locale?: string,
+    status?: 'draft' | 'published',
+    contentType?: string
+  ): Promise<any> {
     try {
       const processed = { ...data };
+
+      // Clean potential modal string references in the data before processing
+      this.cleanModalReferences(processed);
+
+      // Validate and clean relations before processing
+      this.validateAndCleanRelations(processed, model);
 
       for (const [key, attr] of Object.entries(model.attributes)) {
         if (!data[key]) continue;
@@ -729,9 +782,24 @@ export class ImportProcessor {
                           value,
                           attribute: key,
                         });
+
+                        // Add enhanced failure information for array items
+                        const arrayItemFailureDetails = {
+                          attribute: key,
+                          relationValue: value,
+                          isArrayItem: true,
+                          searchDetails:
+                            (error as any).searchDetails || 'No search details available',
+                          relationAttribute: attr,
+                        };
+
                         this.context.addFailure(
                           `Failed to process relation in ${key}: ${error.message}`,
-                          { value, attribute: key }
+                          {
+                            value,
+                            attribute: key,
+                          },
+                          arrayItemFailureDetails
                         );
                         return null;
                       }
@@ -762,10 +830,41 @@ export class ImportProcessor {
                   value: data[key],
                   attribute: key,
                 });
-                this.context.addFailure(`Failed to process relation in ${key}: ${error.message}`, {
-                  value: data[key],
-                  attribute: key,
-                });
+
+                // Add enhanced failure information using new method
+                if (contentType && status) {
+                  this.addEnhancedFailure(
+                    error,
+                    data[key],
+                    contentType,
+                    status,
+                    locale || 'default',
+                    key,
+                    {
+                      attribute: key,
+                      relationValue: data[key],
+                      relationTarget: (attr as any).target,
+                      relationAttribute: attr,
+                    }
+                  );
+                } else {
+                  // Fallback to old method
+                  const relationFailureDetails = {
+                    attribute: key,
+                    relationValue: data[key],
+                    searchDetails: (error as any).searchDetails || 'No search details available',
+                    relationAttribute: attr,
+                  };
+
+                  this.context.addFailure(
+                    `Failed to process relation in ${key}: ${error.message}`,
+                    {
+                      value: data[key],
+                      attribute: key,
+                    },
+                    relationFailureDetails
+                  );
+                }
                 processed[key] = null;
               }
             }
@@ -969,6 +1068,25 @@ export class ImportProcessor {
           if (this.context.options.ignoreMissingRelations) {
             results.push(null);
           } else {
+            // Add detailed failure information with search details
+            const failureDetails = {
+              relationTarget: attr.target,
+              searchValue: typeof item === 'string' ? item : JSON.stringify(item),
+              arrayIndex: i,
+              totalArrayItems: uniqueRelations.length,
+              searchDetails: (error as any).searchDetails || 'No search details available',
+              locale: currentLocale || 'not specified',
+            };
+
+            this.context.addFailure(
+              error.message,
+              {
+                entry: item,
+                path: `${context.operation}.${attr.target}.array[${i}]`,
+              },
+              failureDetails
+            );
+
             // Re-throw the error to fail the entire import
             throw error;
           }
@@ -987,61 +1105,129 @@ export class ImportProcessor {
       return validResults;
     }
 
-    // Helper function to detect language
-    const detectLanguage = (text: string): string => {
-      if (!text || typeof text !== 'string') return 'ru';
+    // Enhanced generic string relation handler for any content type
+    if (typeof relationValue === 'string') {
+      logger.debug(`🎯 Processing string relation for ${attr.target}: "${relationValue}"`, {
+        ...context,
+        value: relationValue.substring(0, 50) + '...',
+      });
 
-      // Normalize the text
-      const normalizedText = text.trim();
+      // Check if this is a modal ID that looks suspicious (unprocessed modal reference)
+      if (
+        attr.target === 'api::modal.modal' &&
+        relationValue.length > 20 &&
+        !relationValue.includes(' ')
+      ) {
+        logger.warn(`🚨 Detected suspicious modal ID: "${relationValue.substring(0, 30)}..."`, {
+          ...context,
+          suspiciousId: relationValue.substring(0, 30) + '...',
+          hint: 'This looks like an unprocessed modal reference',
+        });
 
-      // Kazakh specific characters
-      const kazakhSpecificChars = /[әіңғүұқөһ]/i;
-      if (kazakhSpecificChars.test(normalizedText)) {
-        return 'kk';
+        if (this.context.options.ignoreMissingRelations) {
+          logger.info(`⚠️ Ignoring suspicious modal ID`, context);
+          return null;
+        } else {
+          throw new Error(
+            `Suspicious modal ID detected: "${relationValue.substring(0, 50)}..." - likely an unprocessed modal reference`
+          );
+        }
       }
 
-      // Check for Cyrillic script (commonly used in Russian and Kazakh)
-      const cyrillicChars = /[а-яА-ЯёЁ]/i;
+      // Determine the most likely search field based on content type
+      const searchField = this.getSearchFieldForContentType(attr.target);
 
-      // Check for Latin script (English)
-      const latinChars = /[a-zA-Z]/i;
+      logger.debug(`🔍 Using search field "${searchField}" for ${attr.target}`, {
+        ...context,
+        searchField,
+        value: relationValue.substring(0, 30) + '...',
+      });
 
-      // If text has both Cyrillic and Latin, determine which is more prevalent
-      if (cyrillicChars.test(normalizedText) && latinChars.test(normalizedText)) {
-        // Count Cyrillic vs Latin characters
-        let cyrillicCount = 0;
-        let latinCount = 0;
+      // Try to find existing entity
+      let entityId = await this.findEntityByName(
+        attr.target,
+        relationValue,
+        searchField,
+        currentLocale,
+        this.context.options.ignoreMissingRelations,
+        this.getEntityTypeLabel(attr.target)
+      );
 
-        for (let i = 0; i < normalizedText.length; i++) {
-          const char = normalizedText[i];
-          if (/[а-яА-ЯёЁ]/.test(char)) {
-            cyrillicCount++;
-          } else if (/[a-zA-Z]/.test(char)) {
-            latinCount++;
+      if (entityId) {
+        logger.debug(`✅ Found existing entity for ${attr.target}`, {
+          ...context,
+          entityId,
+          value: relationValue.substring(0, 30) + '...',
+        });
+        return entityId;
+      }
+
+      // If not found and creation is enabled, create the missing entity
+      if (this.context.options.createMissingEntities) {
+        logger.info(`🚀 Creating missing ${attr.target} entity: "${relationValue}"`, {
+          ...context,
+          value: relationValue.substring(0, 30) + '...',
+        });
+
+        try {
+          const createdId = await this.createMissingRelationEntity(
+            attr.target,
+            relationValue,
+            currentLocale
+          );
+
+          if (createdId) {
+            logger.info(`✅ Successfully created ${attr.target} entity`, {
+              ...context,
+              createdId,
+              value: relationValue.substring(0, 30) + '...',
+            });
+            return createdId;
+          }
+        } catch (createError) {
+          logger.error(`❌ Failed to create ${attr.target} entity`, {
+            ...context,
+            error: createError.message,
+            value: relationValue.substring(0, 30) + '...',
+          });
+
+          if (this.context.options.ignoreMissingRelations) {
+            return null;
+          } else {
+            throw new Error(
+              `Failed to create ${attr.target} with ${searchField}="${relationValue}": ${createError.message}`
+            );
           }
         }
-
-        if (latinCount > cyrillicCount) {
-          return 'en';
-        }
-
-        // Default to Russian for Cyrillic if no Kazakh-specific characters found
-        return 'ru';
       }
 
-      // If only Cyrillic, assume Russian
-      if (cyrillicChars.test(normalizedText)) {
-        return 'ru';
+      // If ignoring missing relations, return null
+      if (this.context.options.ignoreMissingRelations) {
+        logger.warn(`⚠️ Ignoring missing ${attr.target} relation: "${relationValue}"`, {
+          ...context,
+          value: relationValue.substring(0, 30) + '...',
+        });
+        return null;
       }
 
-      // If only Latin, assume English
-      if (latinChars.test(normalizedText)) {
-        return 'en';
-      }
+      // Otherwise throw enhanced error with search details
+      const enhancedError = new Error(
+        `Related entity with ${searchField}='${relationValue}' not found in ${attr.target}`
+      );
 
-      // Default to Russian if we can't determine
-      return 'ru';
-    };
+      // Add search details for debugging
+      (enhancedError as any).searchDetails = {
+        searchedName: relationValue,
+        searchField: searchField,
+        contentType: attr.target,
+        locale: currentLocale || 'not specified',
+        entityType: this.getEntityTypeLabel(attr.target),
+      };
+
+      throw enhancedError;
+    }
+
+    // Handle legacy specific content type patterns (for backward compatibility)
 
     // Специальная обработка для template relations
     if (attr.target === 'api::template.template') {
@@ -1059,17 +1245,18 @@ export class ImportProcessor {
           context
         );
 
-        // Поиск template по имени
-        const templateId = await this.findEntityByName(
+        // Enhanced template search with locale handling
+        const templateId = await this.findEntityByNameWithLocaleHandling(
           'api::template.template',
           templateName,
           'name',
-          relationValue.locale,
+          currentLocale || relationValue.locale,
           this.context.options.ignoreMissingRelations,
           'Template'
         );
 
         if (templateId) {
+          logger.info(`✅ Found template: "${templateName}" -> ID: ${templateId}`, context);
           return templateId;
         }
 
@@ -1086,489 +1273,58 @@ export class ImportProcessor {
               `🚀 ATTEMPTING to create missing template with name="${templateName}"`,
               context
             );
-            logger.debug(
-              `Template creation data will include: name="${templateName}", locale determined from context`,
-              context
+
+            const createdTemplateId = await this.createMissingRelationEntity(
+              'api::template.template',
+              templateName,
+              currentLocale || 'ru'
             );
 
-            // Используем переданный locale или fallback на 'ru'
-            const entityLocale = currentLocale || 'ru';
-
-            // Создаем данные для нового шаблона
-            const templateData: any = {
-              name: templateName,
-              dynamicZone: [], // Пустой массив для dynamicZone
-              publishedAt: new Date(),
-              locale: entityLocale,
-            };
-
-            const newTemplate = await strapi.db.query('api::template.template').create({
-              data: templateData,
-            });
-
-            if (newTemplate) {
-              logger.info(`✅ Successfully created new template with id ${newTemplate.id}`, {
+            if (createdTemplateId) {
+              logger.info(`✅ Successfully created new template`, {
                 ...context,
                 name: templateName,
-                locale: templateData.locale,
-                createdId: newTemplate.id,
-                createdDocumentId: newTemplate.documentId || 'not available',
+                createdId: createdTemplateId,
               });
 
               // Добавляем в кэш созданных сущностей
-              this.createdEntitiesCache.set(`template:${templateName}`, newTemplate.id);
+              this.createdEntitiesCache.set(`template:${templateName}`, createdTemplateId);
 
-              // Обработка в зависимости от формата шаблона
-              if (typeof relationValue === 'string') {
-                relationValue = newTemplate.id;
-              } else if (relationValue && typeof relationValue === 'object') {
-                relationValue.template = newTemplate.id;
-              }
-
-              return relationValue;
+              return createdTemplateId;
             } else {
-              logger.error(`Failed to create template in tab`, {
+              logger.error(`Failed to create template`, {
                 ...context,
                 name: templateName,
               });
 
               if (this.context.options.ignoreMissingRelations) {
-                if (typeof relationValue === 'string') {
-                  relationValue = null;
-                } else if (relationValue && typeof relationValue === 'object') {
-                  relationValue.template = null;
-                }
+                return null;
               } else {
-                throw new Error(`Failed to create template with name="${templateName}" in tab`);
+                throw new Error(`Failed to create template with name="${templateName}"`);
               }
             }
           } catch (error) {
-            logger.error(`Error creating template in tab`, {
+            logger.error(`Error creating template`, {
               ...context,
               templateName,
               error: error.message,
             });
 
             if (this.context.options.ignoreMissingRelations) {
-              if (typeof relationValue === 'string') {
-                relationValue = null;
-              } else if (relationValue && typeof relationValue === 'object') {
-                relationValue.template = null;
-              }
+              return null;
             } else {
               throw error;
             }
           }
         }
 
-        return null;
-      }
-    }
-
-    // Специальная обработка для card relations
-    if (attr.target === 'api::card.card') {
-      // Если передано имя карты в виде строки
-      if (typeof relationValue === 'string') {
-        const cardId = await this.findEntityByName(
-          'api::card.card',
-          relationValue,
-          'title',
-          null,
-          this.context.options.ignoreMissingRelations,
-          'Card'
-        );
-
-        if (cardId) {
-          return cardId;
-        } else if (this.context.options.createMissingEntities) {
-          // Создаем новую карту с заданным названием
-          try {
-            logger.info(`Creating missing card with title="${relationValue}"`, context);
-
-            // Определяем язык для карты
-            const entityLocale = currentLocale || 'ru';
-
-            // Создаем данные для новой карты
-            const cardData: any = {
-              title: relationValue,
-              slug: relationValue
-                .toLowerCase()
-                .replace(/\s+/g, '-')
-                .replace(/[^\w\-]+/g, ''),
-              publishedAt: new Date(),
-              content: `Auto-generated card: ${relationValue}`,
-              locale: entityLocale,
-            };
-
-            const newCard = await strapi.db.query('api::card.card').create({
-              data: cardData,
-            });
-
-            if (newCard) {
-              logger.info(`Created new card with id ${newCard.id}`, {
-                ...context,
-                title: relationValue,
-                locale: cardData.locale,
-              });
-              return newCard.id;
-            }
-          } catch (error) {
-            logger.error(`Failed to create card`, {
-              ...context,
-              error: error.message,
-              title: relationValue,
-            });
-          }
+        // If not found and not creating, handle based on options
+        if (this.context.options.ignoreMissingRelations) {
+          logger.warn(`⚠️ Ignoring missing template: "${templateName}"`, context);
+          return null;
+        } else {
+          throw new Error(`Template not found: "${templateName}"`);
         }
-
-        return null;
-      }
-    }
-
-    // Специальная обработка для modal relations
-    if (attr.target === 'api::modal.modal') {
-      // Если передано имя модального окна в виде строки
-      if (typeof relationValue === 'string') {
-        const modalId = await this.findEntityByName(
-          'api::modal.modal',
-          relationValue,
-          'title',
-          null,
-          this.context.options.ignoreMissingRelations,
-          'Modal'
-        );
-
-        if (modalId) {
-          return modalId;
-        } else if (this.context.options.createMissingEntities) {
-          // Создаем новое модальное окно с заданным названием
-          try {
-            logger.info(
-              `🚀 ATTEMPTING to create missing modal with title="${relationValue}"`,
-              context
-            );
-            logger.debug(
-              `Modal creation will include dynamicZone structure and slug generation`,
-              context
-            );
-
-            // Определяем язык для модального окна
-            const entityLocale = currentLocale || 'ru';
-
-            // Создаем slug из заголовка
-            const slug = relationValue
-              .toLowerCase()
-              .replace(/\s+/g, '-')
-              .replace(/[^\w\-]+/g, '');
-
-            // Создаем данные для нового модального окна
-            const modalData: any = {
-              title: relationValue,
-              slug: slug,
-              showHeader: true,
-              isTitleCenter: false,
-              dynamicZone: [
-                {
-                  __component: 'dynamic-components.markdown',
-                  text: `${relationValue}`,
-                },
-              ],
-              locale: entityLocale,
-              publishedAt: new Date(),
-            };
-
-            // Debug logs перед созданием
-            logger.debug(`Attempting to create modal with data:`, {
-              ...context,
-              title: modalData.title,
-              slug: modalData.slug,
-              locale: modalData.locale,
-              dynamicZoneLength: modalData.dynamicZone.length,
-            });
-
-            const newModal = await strapi.db.query('api::modal.modal').create({
-              data: modalData,
-            });
-
-            if (newModal) {
-              logger.info(`Created new modal with id ${newModal.id}`, {
-                ...context,
-                title: relationValue,
-                locale: modalData.locale,
-              });
-              return newModal.id;
-            } else {
-              logger.error(`Failed to create modal, received null response`, {
-                ...context,
-                modalData,
-              });
-            }
-          } catch (error) {
-            logger.error(`Failed to create modal`, {
-              ...context,
-              error: error.message,
-              title: relationValue,
-              stack: error.stack,
-            });
-
-            if (this.context.options.ignoreMissingRelations) {
-              return null;
-            } else {
-              throw new Error(
-                `Failed to create modal with title="${relationValue}": ${error.message}`
-              );
-            }
-          }
-        }
-
-        return null;
-      }
-    }
-
-    // Специальная обработка для FAQ relations
-    if (attr.target === 'api::faq.faq') {
-      // Если передано название FAQ в виде строки
-      if (typeof relationValue === 'string') {
-        const faqId = await this.findEntityByName(
-          'api::faq.faq',
-          relationValue,
-          'title',
-          null,
-          this.context.options.ignoreMissingRelations,
-          'FAQ'
-        );
-
-        if (faqId) {
-          return faqId;
-        } else if (this.context.options.createMissingEntities) {
-          // Создаем новый FAQ с заданным названием
-          try {
-            logger.info(`Creating missing FAQ with title="${relationValue}"`, context);
-
-            // Определяем язык для FAQ
-            const entityLocale = currentLocale || 'ru';
-
-            // Создаем данные для нового FAQ
-            const faqData: any = {
-              title: relationValue,
-              richText: `${relationValue}`,
-              publishedAt: new Date(),
-              locale: entityLocale,
-            };
-
-            const newFaq = await strapi.db.query('api::faq.faq').create({
-              data: faqData,
-            });
-
-            if (newFaq) {
-              logger.info(`✅ Successfully created new FAQ with id ${newFaq.id}`, {
-                ...context,
-                title: relationValue,
-                locale: faqData.locale,
-                createdId: newFaq.id,
-                createdDocumentId: newFaq.documentId || 'not available',
-              });
-              return newFaq.id;
-            } else {
-              logger.error(`❌ Failed to create FAQ - received null response`, {
-                ...context,
-                title: relationValue,
-                faqData,
-              });
-
-              if (this.context.options.ignoreMissingRelations) {
-                return null;
-              } else {
-                throw new Error(
-                  `Failed to create FAQ with title="${relationValue}": received null response`
-                );
-              }
-            }
-          } catch (error) {
-            logger.error(`Failed to create FAQ`, {
-              ...context,
-              error: error.message,
-              title: relationValue,
-            });
-
-            if (this.context.options.ignoreMissingRelations) {
-              return null;
-            } else {
-              throw new Error(
-                `Failed to create FAQ with title="${relationValue}": ${error.message}`
-              );
-            }
-          }
-        }
-
-        return null;
-      }
-    }
-
-    // Специальная обработка для FAQ category relations
-    if (attr.target === 'api::faq-category.faq-category') {
-      // Если передано название категории FAQ в виде строки
-      if (typeof relationValue === 'string') {
-        const categoryId = await this.findEntityByName(
-          'api::faq-category.faq-category',
-          relationValue,
-          'title',
-          null,
-          this.context.options.ignoreMissingRelations,
-          'FAQ Category'
-        );
-
-        if (categoryId) {
-          return categoryId;
-        } else if (this.context.options.createMissingEntities) {
-          // Создаем новую категорию FAQ с заданным названием
-          try {
-            logger.info(`Creating missing FAQ Category with title="${relationValue}"`, context);
-
-            // Определяем язык для категории FAQ
-            const entityLocale = currentLocale || 'ru';
-
-            // Создаем данные для новой категории FAQ
-            const categoryData: any = {
-              title: relationValue,
-              richText: `${relationValue}`,
-              iconName: 'QuestionMarkIcon', // Дефолтное значение иконки
-              publishedAt: new Date(),
-              locale: entityLocale,
-            };
-
-            const newCategory = await strapi.db.query('api::faq-category.faq-category').create({
-              data: categoryData,
-            });
-
-            if (newCategory) {
-              logger.info(`✅ Successfully created new FAQ Category with id ${newCategory.id}`, {
-                ...context,
-                title: relationValue,
-                locale: categoryData.locale,
-              });
-              return newCategory.id;
-            }
-          } catch (error) {
-            logger.error(`Failed to create FAQ Category`, {
-              ...context,
-              error: error.message,
-              title: relationValue,
-            });
-
-            if (this.context.options.ignoreMissingRelations) {
-              return null;
-            } else {
-              throw new Error(
-                `Failed to create FAQ Category with title="${relationValue}": ${error.message}`
-              );
-            }
-          }
-        }
-
-        return null;
-      }
-    }
-
-    // Специальная обработка для country relations
-    if (attr.target === 'api::country.country') {
-      // Если передано имя страны в виде строке
-      if (typeof relationValue === 'string') {
-        const countryId = await this.findEntityByName(
-          'api::country.country',
-          relationValue,
-          'name',
-          null,
-          this.context.options.ignoreMissingRelations,
-          'Country'
-        );
-
-        if (countryId) {
-          return countryId;
-        }
-
-        // Проверяем кэш созданных в этом импорте сущностей
-        const cacheKey = `country:${relationValue}`;
-        if (this.createdEntitiesCache.has(cacheKey)) {
-          const cachedId = this.createdEntitiesCache.get(cacheKey);
-          logger.debug(`Found country in creation cache: ${cachedId}`, context);
-          return cachedId;
-        } else if (this.context.options.createMissingEntities) {
-          // Создаем новую страну с заданным именем
-          try {
-            logger.info(
-              `🚀 ATTEMPTING to create missing country with name="${relationValue}"`,
-              context
-            );
-            logger.debug(
-              `Country creation will include code generation and locale detection`,
-              context
-            );
-
-            // Определяем язык для страны
-            const entityLocale = currentLocale || 'ru';
-
-            // Генерируем код страны из имени (первые 3 буквы в верхнем регистре)
-            // Обеспечиваем уникальность кода добавляя временную метку, если необходимо
-            const timestamp = new Date().getTime().toString().slice(-4);
-            const baseCode = relationValue
-              .replace(/[^a-zA-Z0-9а-яА-ЯёЁіңғүұқөһІҢҒҮҰҚӨҺ]/g, '')
-              .substring(0, 3)
-              .toUpperCase();
-            const code = baseCode || `CTR${timestamp}`;
-
-            logger.debug(`Generated country code: ${code} for name "${relationValue}"`, context);
-
-            // Создаем данные для новой страны
-            const countryData: any = {
-              name: relationValue,
-              code: code, // Обязательное поле
-              publishedAt: new Date(),
-              locale: entityLocale,
-            };
-
-            const newCountry = await strapi.db.query('api::country.country').create({
-              data: countryData,
-            });
-
-            if (newCountry) {
-              logger.info(`✅ Successfully created new country with id ${newCountry.id}`, {
-                ...context,
-                name: relationValue,
-                code,
-                locale: countryData.locale,
-                createdId: newCountry.id,
-                createdDocumentId: newCountry.documentId || 'not available',
-              });
-
-              // Добавляем в кэш созданных сущностей
-              this.createdEntitiesCache.set(`country:${relationValue}`, newCountry.id);
-              return newCountry.id;
-            } else {
-              logger.error(`❌ Failed to create country - received null response`, {
-                ...context,
-                name: relationValue,
-                countryData,
-              });
-
-              if (this.context.options.ignoreMissingRelations) {
-                return null;
-              } else {
-                throw new Error(
-                  `Failed to create country with name="${relationValue}": received null response`
-                );
-              }
-            }
-          } catch (error) {
-            logger.error(`Failed to create country`, {
-              ...context,
-              error: error.message,
-              name: relationValue,
-            });
-          }
-        }
-
-        return null;
       }
     }
 
@@ -1595,88 +1351,6 @@ export class ImportProcessor {
       }
     }
 
-    // Если строковое значение и не нашли в базе, попробуем общий поиск по строке для любых сущностей
-    if (typeof relationValue === 'string' && targetModel) {
-      logger.debug(`Trying generic string relation lookup for ${attr.target}`, {
-        ...context,
-        value: relationValue,
-      });
-
-      // Определяем наиболее вероятные поля для поиска
-      const possibleFields = ['name', 'title', 'slug', 'displayName', 'label', 'code', 'id'];
-
-      // Найдем поля, которые существуют в модели
-      const validFields = possibleFields.filter((field) => targetModel.attributes[field]);
-
-      if (validFields.length > 0) {
-        logger.debug(
-          `Found valid search fields for ${attr.target}: ${validFields.join(', ')}`,
-          context
-        );
-
-        // Попробуем поиск по каждому полю
-        for (const field of validFields) {
-          try {
-            const entity = await strapi.db.query(attr.target).findOne({
-              where: { [field]: relationValue },
-            });
-
-            if (entity) {
-              logger.debug(`Found entity by generic lookup using field ${field}`, {
-                ...context,
-                id: entity.id,
-                value: relationValue,
-              });
-              return entity.id;
-            }
-          } catch (error) {
-            logger.debug(`Error searching ${attr.target} by ${field}`, {
-              ...context,
-              error: error.message,
-            });
-          }
-        }
-
-        // If no entity was found but we can create missing entities
-        if (this.context.options.createMissingEntities && validFields.includes('name')) {
-          logger.info(
-            `Creating generic entity for ${attr.target} with name="${relationValue}"`,
-            context
-          );
-          try {
-            // Определяем язык для сущности
-            const entityLocale = currentLocale || 'ru';
-
-            const newEntity = await strapi.db.query(attr.target).create({
-              data: {
-                name: relationValue,
-                slug: relationValue
-                  .toLowerCase()
-                  .replace(/\s+/g, '-')
-                  .replace(/[^\w\-]+/g, ''),
-                publishedAt: new Date(),
-                locale: entityLocale,
-              },
-            });
-
-            if (newEntity) {
-              logger.info(`Created generic entity with id ${newEntity.id}`, {
-                ...context,
-                name: relationValue,
-                locale: entityLocale,
-              });
-              return newEntity.id;
-            }
-          } catch (error) {
-            logger.error(`Failed to create generic entity`, {
-              ...context,
-              error: error.message,
-            });
-          }
-        }
-      }
-    }
-
     // Если включена опция disallowNewRelations и relation не найдена
     if (this.context.options.disallowNewRelations) {
       if (this.context.options.ignoreMissingRelations) {
@@ -1693,62 +1367,64 @@ export class ImportProcessor {
     return null;
   }
 
-  private async findInDatabase(
-    idValue: any,
-    targetModel: Schema.Schema,
-    targetIdField: string
-  ): Promise<{ documentId: string } | null> {
-    const context = {
-      operation: 'import',
-      contentType: targetModel.uid,
-      idField: targetIdField,
-      idValue,
+  /**
+   * Determines the appropriate search field for a given content type
+   */
+  private getSearchFieldForContentType(contentType: string): string {
+    // Map content types to their most likely search fields
+    const contentTypeToSearchField: Record<string, string> = {
+      'api::faq.faq': 'title',
+      'api::faq-category.faq-category': 'title',
+      'api::modal.modal': 'title',
+      'api::card.card': 'title',
+      'api::template.template': 'name',
+      'api::country.country': 'name',
+      'api::category.category': 'title',
+      'api::tag.tag': 'name',
+      'api::product.product': 'title',
+      'api::service.service': 'title',
+      'api::page.page': 'title',
+      'api::article.article': 'title',
+      'api::news.news': 'title',
+      'api::blog.blog': 'title',
+      'api::post.post': 'title',
+      'api::user.user': 'username',
+      'api::author.author': 'name',
+      'api::brand.brand': 'name',
+      'api::manufacturer.manufacturer': 'name',
     };
 
-    logger.debug('Looking up record in database', context);
+    // Return specific mapping if exists, otherwise default to 'title'
+    return contentTypeToSearchField[contentType] || 'title';
+  }
 
-    // Check both published and draft versions
-    const publishedVersion = await this.services
-      .documents(targetModel.uid as UID.ContentType)
-      .findFirst({
-        filters: { [targetIdField]: idValue },
-        status: 'published',
-      });
+  /**
+   * Gets a human-readable label for a content type
+   */
+  private getEntityTypeLabel(contentType: string): string {
+    const typeLabels: Record<string, string> = {
+      'api::faq.faq': 'FAQ',
+      'api::faq-category.faq-category': 'FAQ Category',
+      'api::modal.modal': 'Modal',
+      'api::card.card': 'Card',
+      'api::template.template': 'Template',
+      'api::country.country': 'Country',
+      'api::category.category': 'Category',
+      'api::tag.tag': 'Tag',
+      'api::product.product': 'Product',
+      'api::service.service': 'Service',
+      'api::page.page': 'Page',
+      'api::article.article': 'Article',
+      'api::news.news': 'News',
+      'api::blog.blog': 'Blog',
+      'api::post.post': 'Post',
+      'api::user.user': 'User',
+      'api::author.author': 'Author',
+      'api::brand.brand': 'Brand',
+      'api::manufacturer.manufacturer': 'Manufacturer',
+    };
 
-    const draftVersion = await this.services
-      .documents(targetModel.uid as UID.ContentType)
-      .findFirst({
-        filters: { [targetIdField]: idValue },
-        status: 'draft',
-      });
-
-    if (publishedVersion && draftVersion) {
-      if (publishedVersion.documentId === draftVersion.documentId) {
-        logger.debug('Found matching published and draft versions', {
-          ...context,
-          documentId: publishedVersion.documentId,
-        });
-        return publishedVersion;
-      }
-      logger.warn('Found conflicting published and draft versions', {
-        ...context,
-        publishedId: publishedVersion.documentId,
-        draftId: draftVersion.documentId,
-      });
-      return publishedVersion;
-    }
-
-    if (publishedVersion || draftVersion) {
-      logger.debug('Found single version', {
-        ...context,
-        status: publishedVersion ? 'published' : 'draft',
-        documentId: (publishedVersion || draftVersion).documentId,
-      });
-    } else {
-      logger.debug('Record not found in database', context);
-    }
-
-    return publishedVersion || draftVersion;
+    return typeLabels[contentType] || contentType.split('.').pop() || 'Entity';
   }
 
   private async processComponent(
@@ -1770,72 +1446,35 @@ export class ImportProcessor {
     locale?: string
   ): Promise<any> {
     const context = {
-      operation: 'import',
+      operation: 'processComponentItem',
       componentType,
+      locale,
     };
+
+    logger.debug(`Processing component item`, {
+      ...context,
+      hasComponent: !!item.__component,
+      originalComponent: item.__component,
+      keysCount: Object.keys(item).length,
+    });
 
     // Глубокое копирование для предотвращения изменения оригинального объекта
     const processed = JSON.parse(JSON.stringify(item));
     const componentModel = getModel(componentType);
 
+    if (!componentModel) {
+      logger.error(`Component model not found for type: ${componentType}`, context);
+      throw new Error(`Component model not found for type: ${componentType}`);
+    }
+
+    logger.debug(`Component model found`, {
+      ...context,
+      modelUid: componentModel.uid,
+      attributesCount: Object.keys(componentModel.attributes).length,
+    });
+
     // Обработка кнопок с модальными окнами
     await this.processButtonsWithModals(processed, context);
-
-    // Функция для определения языка
-    const detectLanguage = (text: string): string => {
-      if (!text || typeof text !== 'string') return 'ru';
-
-      // Normalize the text
-      const normalizedText = text.trim();
-
-      // Kazakh specific characters
-      const kazakhSpecificChars = /[әіңғүұқөһ]/i;
-      if (kazakhSpecificChars.test(normalizedText)) {
-        return 'kk';
-      }
-
-      // Check for Cyrillic script (commonly used in Russian and Kazakh)
-      const cyrillicChars = /[а-яА-ЯёЁ]/i;
-
-      // Check for Latin script (English)
-      const latinChars = /[a-zA-Z]/i;
-
-      // If text has both Cyrillic and Latin, determine which is more prevalent
-      if (cyrillicChars.test(normalizedText) && latinChars.test(normalizedText)) {
-        // Count Cyrillic vs Latin characters
-        let cyrillicCount = 0;
-        let latinCount = 0;
-
-        for (let i = 0; i < normalizedText.length; i++) {
-          const char = normalizedText[i];
-          if (/[а-яА-ЯёЁ]/.test(char)) {
-            cyrillicCount++;
-          } else if (/[a-zA-Z]/.test(char)) {
-            latinCount++;
-          }
-        }
-
-        if (latinCount > cyrillicCount) {
-          return 'en';
-        }
-
-        // Default to Russian for Cyrillic if no Kazakh-specific characters found
-        return 'ru';
-      }
-
-      // If only Cyrillic, assume Russian
-      if (cyrillicChars.test(normalizedText)) {
-        return 'ru';
-      }
-
-      // If only Latin, assume English
-      if (latinChars.test(normalizedText)) {
-        return 'en';
-      }
-
-      // Default to Russian if we can't determine
-      return 'ru';
-    };
 
     // Специальная обработка для компонентов, содержащих template relations
     if (componentType === 'dynamic-components.tab' && processed.tabs) {
@@ -1982,27 +1621,108 @@ export class ImportProcessor {
     }
 
     // Обрабатываем все поля компонента
+    logger.debug(`Processing component attributes`, {
+      ...context,
+      attributesCount: Object.keys(componentModel.attributes).length,
+    });
+
     for (const [key, attr] of Object.entries(componentModel.attributes)) {
       if (!processed[key]) continue;
 
-      if (isMediaAttribute(attr)) {
-        const allowedTypes = (attr as Schema.Attribute.Media).allowedTypes || ['any'];
-        processed[key] = await this.processMedia(processed[key], allowedTypes);
-      } else if (isRelationAttribute(attr)) {
-        processed[key] = await this.processRelation(processed[key], attr, locale);
+      logger.debug(`Processing component attribute: ${key}`, {
+        ...context,
+        attributeKey: key,
+        isMediaAttribute: isMediaAttribute(attr),
+        isRelationAttribute: isRelationAttribute(attr),
+      });
+
+      try {
+        if (isMediaAttribute(attr)) {
+          const allowedTypes = (attr as Schema.Attribute.Media).allowedTypes || ['any'];
+          processed[key] = await this.processMedia(processed[key], allowedTypes);
+        } else if (isRelationAttribute(attr)) {
+          processed[key] = await this.processRelation(processed[key], attr, locale);
+        }
+      } catch (error) {
+        logger.error(`Failed to process component attribute: ${key}`, {
+          ...context,
+          attributeKey: key,
+          error: error.message,
+        });
+
+        if (this.context.options.ignoreMissingRelations) {
+          logger.warn(`Ignoring failed attribute processing: ${key}`, context);
+          // Keep the original value if processing fails
+        } else {
+          throw error;
+        }
       }
     }
+
+    logger.debug(`Component item processing complete`, {
+      ...context,
+      resultKeysCount: Object.keys(processed).length,
+      hasResultComponent: !!processed.__component,
+      resultComponent: processed.__component,
+    });
 
     return processed;
   }
 
   private async processDynamicZone(items: any[], locale?: string): Promise<any[]> {
-    return Promise.all(
-      items.map(async (item) => ({
-        __component: item.__component,
-        ...(await this.processComponentItem(item, item.__component, locale)),
-      }))
+    const context = {
+      operation: 'processDynamicZone',
+      locale,
+      itemsCount: items.length,
+    };
+
+    logger.debug(`Processing dynamic zone with ${items.length} items`, context);
+
+    const processedItems = await Promise.all(
+      items.map(async (item, index) => {
+        const itemContext = {
+          ...context,
+          itemIndex: index,
+          componentType: item.__component,
+        };
+
+        logger.debug(`Processing dynamic zone item ${index + 1}/${items.length}`, itemContext);
+
+        try {
+          // processComponentItem returns the full processed object including __component
+          const processedItem = await this.processComponentItem(item, item.__component, locale);
+
+          logger.debug(`Successfully processed dynamic zone item ${index + 1}`, {
+            ...itemContext,
+            hasComponent: !!processedItem.__component,
+            keysCount: Object.keys(processedItem).length,
+          });
+
+          return processedItem;
+        } catch (error) {
+          logger.error(`Failed to process dynamic zone item ${index + 1}`, {
+            ...itemContext,
+            error: error.message,
+          });
+
+          // If processing fails, we still want to keep the original item structure
+          if (this.context.options.ignoreMissingRelations) {
+            logger.warn(`Keeping original item due to processing error`, itemContext);
+            return item;
+          } else {
+            throw error;
+          }
+        }
+      })
     );
+
+    logger.debug(`Dynamic zone processing complete`, {
+      ...context,
+      processedItemsCount: processedItems.length,
+      originalItemsCount: items.length,
+    });
+
+    return processedItems;
   }
 
   private async processMedia(
@@ -2132,12 +1852,737 @@ export class ImportProcessor {
       }
     }
 
+    // Fix background color values recursively
+    this.fixBackgroundColors(sanitized);
+
     return sanitized;
   }
 
+  private fixBackgroundColors(obj: any): void {
+    if (!obj || typeof obj !== 'object') {
+      return;
+    }
+
+    // Mapping of invalid color values to valid ones
+    const colorMapping: Record<string, string> = {
+      card: 'main.white',
+      secondaryGray: 'secondary.gray',
+      primaryGray: 'main.gray',
+      whiteCard: 'main.white',
+      grayCard: 'main.gray',
+      blackCard: 'main.black',
+      // Add more mappings as needed
+    };
+
+    if (Array.isArray(obj)) {
+      obj.forEach((item) => this.fixBackgroundColors(item));
+      return;
+    }
+
+    for (const [key, value] of Object.entries(obj)) {
+      if (key === 'backgroundColors' && typeof value === 'string') {
+        if (colorMapping[value]) {
+          logger.debug(`🎨 Fixing background color: ${value} -> ${colorMapping[value]}`);
+          obj[key] = colorMapping[value];
+        }
+      } else if (typeof value === 'object' && value !== null) {
+        this.fixBackgroundColors(value);
+      }
+    }
+  }
+
+  private cleanModalReferences(obj: any): void {
+    if (!obj || typeof obj !== 'object') {
+      return;
+    }
+
+    if (Array.isArray(obj)) {
+      obj.forEach((item) => this.cleanModalReferences(item));
+      return;
+    }
+
+    for (const [key, value] of Object.entries(obj)) {
+      if (key === 'modal' && typeof value === 'string') {
+        // Check if this looks like a modal name instead of an ID
+        if (value.length > 20 || value.includes(' ') || /[а-яё]/i.test(value)) {
+          logger.warn(
+            `🚨 Found potential unprocessed modal reference: "${value.substring(0, 50)}..."`,
+            {
+              key,
+              value: value.substring(0, 50) + '...',
+              hint: 'This should have been converted to an ID by processButtonsWithModals',
+            }
+          );
+
+          // Set to null to prevent "Document with id not found" errors
+          // The processButtonsWithModals should handle this conversion
+          obj[key] = null;
+        }
+      } else if (typeof value === 'object' && value !== null) {
+        this.cleanModalReferences(value);
+      }
+    }
+  }
+
+  private validateAndCleanRelations(data: any, model: Schema.Schema): void {
+    if (!data || typeof data !== 'object') {
+      return;
+    }
+
+    for (const [key, attr] of Object.entries(model.attributes)) {
+      if (!data[key] || !isRelationAttribute(attr)) continue;
+
+      try {
+        if (Array.isArray(data[key])) {
+          // Filter out invalid relation values
+          data[key] = data[key].filter((item: any) => {
+            if (typeof item === 'string') {
+              // Check if it looks like an invalid ID
+              if (item.length > 30 || item.includes(' ') || /[а-яё]/i.test(item)) {
+                logger.warn(`🚨 Removing invalid relation ID: "${item.substring(0, 30)}..."`, {
+                  field: key,
+                  contentType: model.uid,
+                  hint: 'This looks like a name instead of an ID',
+                });
+                return false;
+              }
+            }
+            return true;
+          });
+        } else if (typeof data[key] === 'string') {
+          // Check if it looks like an invalid ID
+          if (data[key].length > 30 || data[key].includes(' ') || /[а-яё]/i.test(data[key])) {
+            logger.warn(`🚨 Removing invalid relation ID: "${data[key].substring(0, 30)}..."`, {
+              field: key,
+              contentType: model.uid,
+              hint: 'This looks like a name instead of an ID',
+            });
+            data[key] = null;
+          }
+        }
+      } catch (error) {
+        logger.error(`Error validating relation field ${key}`, {
+          error: error.message,
+          field: key,
+          contentType: model.uid,
+        });
+        // Set to null to prevent further errors
+        data[key] = null;
+      }
+    }
+  }
+
   private async processButtonsWithModals(item: any, context: any): Promise<void> {
-    // This method can be empty for now or implement button modal processing
-    // The actual implementation was complex but not essential for basic functionality
+    if (!item || typeof item !== 'object') {
+      return;
+    }
+
+    const locale = context.locale;
+
+    logger.debug(`🔍 Starting processButtonsWithModals`, {
+      ...context,
+      createMissingEntities: this.context.options.createMissingEntities,
+      ignoreMissingRelations: this.context.options.ignoreMissingRelations,
+      itemKeys: Object.keys(item).join(', '),
+    });
+
+    // Рекурсивная функция для поиска кнопок в объекте
+    const processButtonsRecursively = async (obj: any, path: string = ''): Promise<void> => {
+      if (!obj || typeof obj !== 'object') {
+        return;
+      }
+
+      // Если это массив, обрабатываем каждый элемент
+      if (Array.isArray(obj)) {
+        for (let i = 0; i < obj.length; i++) {
+          await processButtonsRecursively(obj[i], `${path}[${i}]`);
+        }
+        return;
+      }
+
+      // Проверяем, является ли текущий объект компонентом button
+      if (obj.__component === 'dynamic-components.button') {
+        logger.debug(`🔍 Found button component at ${path}`, {
+          ...context,
+          buttonText: obj.text || 'No text',
+          hasModal: !!obj.modal,
+          buttonPath: path,
+        });
+
+        // Обрабатываем модальное окно в отдельном компоненте button
+        if (obj && typeof obj === 'object' && obj.modal) {
+          if (typeof obj.modal === 'string') {
+            logger.debug(`🎯 Processing modal in button component at ${path}`, {
+              ...context,
+              modalName: obj.modal.substring(0, 50) + '...',
+              buttonText: obj.text || 'No text',
+            });
+
+            try {
+              logger.debug(`🔍 Searching for modal`, {
+                ...context,
+                modalName: obj.modal,
+                searchField: 'title',
+                locale,
+                createMissingEntities: this.context.options.createMissingEntities,
+              });
+
+              // Ищем модальное окно по title
+              const modalId = await this.findEntityByName(
+                'api::modal.modal',
+                obj.modal,
+                'title',
+                locale,
+                this.context.options.ignoreMissingRelations,
+                'Modal'
+              );
+
+              if (modalId) {
+                logger.debug(`✅ Found existing modal for button component at ${path}`, {
+                  ...context,
+                  modalId,
+                  modalName: obj.modal.substring(0, 30) + '...',
+                });
+                obj.modal = modalId;
+              } else if (this.context.options.createMissingEntities) {
+                // Создаем новое модальное окно
+                try {
+                  logger.info(`🚀 Creating missing modal for button component at ${path}`, {
+                    ...context,
+                    modalName: obj.modal.substring(0, 30) + '...',
+                  });
+
+                  const createdModalId = await this.createMissingRelationEntity(
+                    'api::modal.modal',
+                    obj.modal,
+                    locale
+                  );
+
+                  if (createdModalId) {
+                    logger.info(`✅ Created modal for button component at ${path}`, {
+                      ...context,
+                      createdModalId,
+                      modalName: obj.modal.substring(0, 30) + '...',
+                    });
+                    obj.modal = createdModalId;
+                  } else {
+                    throw new Error(`Failed to create modal: ${obj.modal}`);
+                  }
+                } catch (createError) {
+                  logger.error(`Failed to create modal for button component at ${path}`, {
+                    ...context,
+                    modalName: obj.modal.substring(0, 30) + '...',
+                    createError: createError.message,
+                  });
+
+                  if (this.context.options.ignoreMissingRelations) {
+                    obj.modal = null;
+                  } else {
+                    throw createError;
+                  }
+                }
+              } else if (this.context.options.ignoreMissingRelations) {
+                logger.warn(`Ignoring missing modal for button component at ${path}`, {
+                  ...context,
+                  modalName: obj.modal.substring(0, 30) + '...',
+                });
+                obj.modal = null;
+              } else {
+                throw new Error(`Modal not found: ${obj.modal}`);
+              }
+            } catch (error) {
+              logger.error(`Error processing modal for button component at ${path}`, {
+                ...context,
+                modalName: obj.modal.substring(0, 30) + '...',
+                error: error.message,
+              });
+
+              if (this.context.options.ignoreMissingRelations) {
+                obj.modal = null;
+              } else {
+                throw error;
+              }
+            }
+          } else {
+            logger.debug(`Button component at ${path} has non-string modal, skipping`, {
+              ...context,
+              modalType: typeof obj.modal,
+              buttonPath: path,
+            });
+          }
+        }
+      }
+
+      // Проверяем, есть ли в объекте поле 'buttons'
+      if (obj.buttons && Array.isArray(obj.buttons)) {
+        logger.debug(`🔍 Found buttons array at ${path}.buttons`, {
+          ...context,
+          buttonsCount: obj.buttons.length,
+          buttonsPath: path,
+        });
+
+        // Обрабатываем каждую кнопку
+        for (let buttonIndex = 0; buttonIndex < obj.buttons.length; buttonIndex++) {
+          const button = obj.buttons[buttonIndex];
+          const buttonPath = `${path}.buttons[${buttonIndex}]`;
+
+          if (button && typeof button === 'object' && button.modal) {
+            if (typeof button.modal === 'string') {
+              logger.debug(`🎯 Processing modal in button at ${buttonPath}`, {
+                ...context,
+                modalName: button.modal.substring(0, 50) + '...',
+                buttonText: button.text || 'No text',
+              });
+
+              try {
+                logger.debug(`🔍 Searching for modal in buttons array`, {
+                  ...context,
+                  modalName: button.modal,
+                  searchField: 'title',
+                  locale,
+                  createMissingEntities: this.context.options.createMissingEntities,
+                  buttonIndex: buttonIndex,
+                });
+
+                // Ищем модальное окно по title
+                const modalId = await this.findEntityByName(
+                  'api::modal.modal',
+                  button.modal,
+                  'title',
+                  locale,
+                  this.context.options.ignoreMissingRelations,
+                  'Modal'
+                );
+
+                if (modalId) {
+                  logger.debug(`✅ Found existing modal for button at ${buttonPath}`, {
+                    ...context,
+                    modalId,
+                    modalName: button.modal.substring(0, 30) + '...',
+                  });
+                  button.modal = modalId;
+                } else if (this.context.options.createMissingEntities) {
+                  // Создаем новое модальное окно
+                  try {
+                    logger.info(`🚀 Creating missing modal for button at ${buttonPath}`, {
+                      ...context,
+                      modalName: button.modal.substring(0, 30) + '...',
+                    });
+
+                    const createdModalId = await this.createMissingRelationEntity(
+                      'api::modal.modal',
+                      button.modal,
+                      locale
+                    );
+
+                    if (createdModalId) {
+                      logger.info(`✅ Created modal for button at ${buttonPath}`, {
+                        ...context,
+                        createdModalId,
+                        modalName: button.modal.substring(0, 30) + '...',
+                      });
+                      button.modal = createdModalId;
+                    } else {
+                      throw new Error(`Failed to create modal: ${button.modal}`);
+                    }
+                  } catch (createError) {
+                    logger.error(`Failed to create modal for button at ${buttonPath}`, {
+                      ...context,
+                      modalName: button.modal.substring(0, 30) + '...',
+                      createError: createError.message,
+                    });
+
+                    if (this.context.options.ignoreMissingRelations) {
+                      button.modal = null;
+                    } else {
+                      throw createError;
+                    }
+                  }
+                } else if (this.context.options.ignoreMissingRelations) {
+                  logger.warn(`Ignoring missing modal for button at ${buttonPath}`, {
+                    ...context,
+                    modalName: button.modal.substring(0, 30) + '...',
+                  });
+                  button.modal = null;
+                } else {
+                  throw new Error(`Modal not found: ${button.modal}`);
+                }
+              } catch (error) {
+                logger.error(`Error processing modal for button at ${buttonPath}`, {
+                  ...context,
+                  modalName: button.modal.substring(0, 30) + '...',
+                  error: error.message,
+                });
+
+                if (this.context.options.ignoreMissingRelations) {
+                  button.modal = null;
+                } else {
+                  throw error;
+                }
+              }
+            } else {
+              logger.debug(`Button at ${buttonPath} has non-string modal, skipping`, {
+                ...context,
+                modalType: typeof button.modal,
+                buttonPath: buttonPath,
+              });
+            }
+          }
+        }
+      }
+
+      // Обрабатываем модальные окна в обычных объектах кнопок (без __component)
+      if (
+        obj &&
+        typeof obj === 'object' &&
+        obj.modal &&
+        typeof obj.modal === 'string' &&
+        !obj.__component
+      ) {
+        logger.debug(`🎯 Processing modal in generic button object at ${path}`, {
+          ...context,
+          modalName: obj.modal.substring(0, 50) + '...',
+          buttonText: obj.text || 'No text',
+          buttonPath: path,
+        });
+
+        try {
+          logger.debug(`🔍 Searching for modal in generic button object`, {
+            ...context,
+            modalName: obj.modal,
+            searchField: 'title',
+            locale,
+            createMissingEntities: this.context.options.createMissingEntities,
+          });
+
+          // Ищем модальное окно по title
+          const modalId = await this.findEntityByName(
+            'api::modal.modal',
+            obj.modal,
+            'title',
+            locale,
+            this.context.options.ignoreMissingRelations,
+            'Modal'
+          );
+
+          if (modalId) {
+            logger.debug(`✅ Found existing modal for generic button object at ${path}`, {
+              ...context,
+              modalId,
+              modalName: obj.modal.substring(0, 30) + '...',
+            });
+            obj.modal = modalId;
+          } else if (this.context.options.createMissingEntities) {
+            // Создаем новое модальное окно
+            try {
+              logger.info(`🚀 Creating missing modal for generic button object at ${path}`, {
+                ...context,
+                modalName: obj.modal.substring(0, 30) + '...',
+              });
+
+              const createdModalId = await this.createMissingRelationEntity(
+                'api::modal.modal',
+                obj.modal,
+                locale
+              );
+
+              if (createdModalId) {
+                logger.info(`✅ Created modal for generic button object at ${path}`, {
+                  ...context,
+                  createdModalId,
+                  modalName: obj.modal.substring(0, 30) + '...',
+                });
+                obj.modal = createdModalId;
+              } else {
+                throw new Error(`Failed to create modal: ${obj.modal}`);
+              }
+            } catch (createError) {
+              logger.error(`Failed to create modal for generic button object at ${path}`, {
+                ...context,
+                modalName: obj.modal.substring(0, 30) + '...',
+                createError: createError.message,
+              });
+
+              if (this.context.options.ignoreMissingRelations) {
+                obj.modal = null;
+              } else {
+                throw createError;
+              }
+            }
+          } else if (this.context.options.ignoreMissingRelations) {
+            logger.warn(`Ignoring missing modal for generic button object at ${path}`, {
+              ...context,
+              modalName: obj.modal.substring(0, 30) + '...',
+            });
+            obj.modal = null;
+          } else {
+            // Last resort: Force creation if this looks like a modal name
+            if (obj.modal.length > 10 && (obj.modal.includes(' ') || /[а-яё]/i.test(obj.modal))) {
+              logger.warn(
+                `🔥 Force creating modal as last resort for: "${obj.modal.substring(0, 30)}..."`,
+                {
+                  ...context,
+                  modalName: obj.modal.substring(0, 30) + '...',
+                  hint: 'This should normally be handled by createMissingEntities option',
+                }
+              );
+
+              try {
+                const createdModalId = await this.createMissingRelationEntity(
+                  'api::modal.modal',
+                  obj.modal,
+                  locale
+                );
+
+                if (createdModalId) {
+                  obj.modal = createdModalId;
+                } else {
+                  obj.modal = null;
+                }
+              } catch (forceCreateError) {
+                logger.error(`Failed to force create modal`, {
+                  ...context,
+                  error: forceCreateError.message,
+                });
+                obj.modal = null;
+              }
+            } else {
+              throw new Error(`Modal not found: ${obj.modal}`);
+            }
+          }
+        } catch (error) {
+          logger.error(`Error processing modal for generic button object at ${path}`, {
+            ...context,
+            modalName: obj.modal.substring(0, 30) + '...',
+            error: error.message,
+          });
+
+          if (this.context.options.ignoreMissingRelations) {
+            obj.modal = null;
+          } else {
+            throw error;
+          }
+        }
+      }
+
+      // Рекурсивно обрабатываем все вложенные объекты и массивы
+      for (const [key, value] of Object.entries(obj)) {
+        if (key !== 'buttons' && typeof value === 'object' && value !== null) {
+          const newPath = path ? `${path}.${key}` : key;
+
+          // Проверяем, является ли это поле button компонентом (может быть одиночным или массивом)
+          if (
+            (key === 'button' ||
+              key === 'desktopButtons' ||
+              key === 'mobileButtons' ||
+              key === 'desktopButton' ||
+              key === 'mobileButton' ||
+              key === 'responsiveButtons' ||
+              key === 'bannerButtons') &&
+            value
+          ) {
+            if (Array.isArray(value)) {
+              // Массив button компонентов
+              logger.debug(`🔍 Found button array at ${newPath}`, {
+                ...context,
+                buttonsCount: value.length,
+                buttonPath: newPath,
+              });
+
+              for (let buttonIndex = 0; buttonIndex < value.length; buttonIndex++) {
+                const buttonComponent = value[buttonIndex];
+                const buttonPath = `${newPath}[${buttonIndex}]`;
+
+                logger.debug(`🎯 Processing button array item ${buttonIndex + 1}/${value.length}`, {
+                  ...context,
+                  buttonIndex,
+                  buttonText: buttonComponent?.text || 'No text',
+                  hasModal: !!buttonComponent?.modal,
+                  modalValue: buttonComponent?.modal,
+                  buttonComponent: buttonComponent?.__component || 'no component',
+                  buttonPath,
+                });
+
+                await processButtonsRecursively(buttonComponent, buttonPath);
+              }
+            } else {
+              // Одиночный button компонент
+              logger.debug(`🔍 Found single button at ${newPath}`, {
+                ...context,
+                hasModal: !!(value as any).modal,
+                buttonPath: newPath,
+              });
+              await processButtonsRecursively(value, newPath);
+            }
+          } else {
+            // Обычная рекурсивная обработка
+            await processButtonsRecursively(value, newPath);
+          }
+        }
+      }
+    };
+
+    try {
+      await processButtonsRecursively(item, 'item');
+    } catch (error) {
+      logger.error(`Error in processButtonsWithModals`, {
+        ...context,
+        error: error.message,
+      });
+
+      if (!this.context.options.ignoreMissingRelations) {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Enhanced version of findEntityByName with better locale handling for templates
+   */
+  private async findEntityByNameWithLocaleHandling(
+    contentType: string,
+    name: string,
+    nameField: string = 'name',
+    locale: string | null = null,
+    ignoreMissingRelations: boolean = false,
+    entityType: string = 'Entity'
+  ): Promise<string | null> {
+    const context = {
+      operation: 'findEntityByNameWithLocaleHandling',
+      contentType,
+      name: name.substring(0, 50) + '...',
+      nameField,
+      locale,
+    };
+
+    logger.debug(`🔍 Enhanced search for ${entityType} with locale handling`, context);
+
+    // First try the standard findEntityByName
+    try {
+      const result = await this.findEntityByName(
+        contentType,
+        name,
+        nameField,
+        locale,
+        true, // Always ignore missing relations in first attempt
+        entityType
+      );
+
+      if (result) {
+        logger.debug(`✅ Found ${entityType} using standard search`, {
+          ...context,
+          entityId: result,
+        });
+        return result;
+      }
+    } catch (error) {
+      logger.debug(`Standard search failed: ${error.message}`, context);
+    }
+
+    // If not found, try with different locale strategies for templates
+    if (contentType === 'api::template.template') {
+      const localeStrategies = [
+        null, // No locale filter
+        'ru', // Default locale
+        'en', // English fallback
+        'default', // Default keyword
+      ];
+
+      for (const searchLocale of localeStrategies) {
+        if (searchLocale === locale) continue; // Skip if already tried
+
+        try {
+          logger.debug(`🔄 Trying template search with locale: ${searchLocale || 'null'}`, {
+            ...context,
+            searchLocale: searchLocale || 'null',
+          });
+
+          const searchWhere: any = {
+            [nameField]: name.trim(),
+          };
+
+          // Only add locale filter if specified
+          if (searchLocale && searchLocale !== 'default') {
+            searchWhere.locale = searchLocale;
+          }
+
+          const entity = await strapi.db.query(contentType).findOne({
+            where: searchWhere,
+          });
+
+          if (entity) {
+            logger.info(`✅ Found ${entityType} with locale strategy: ${searchLocale || 'null'}`, {
+              ...context,
+              entityId: entity.id,
+              documentId: entity.documentId,
+              foundLocale: entity.locale || 'null',
+              foundValue: entity[nameField],
+            });
+            return entity.documentId || entity.id;
+          }
+        } catch (searchError) {
+          logger.debug(
+            `Search with locale ${searchLocale || 'null'} failed: ${searchError.message}`,
+            context
+          );
+        }
+      }
+
+      // Try case-insensitive search for templates
+      try {
+        logger.debug(`🔍 Trying case-insensitive template search`, context);
+
+        const entity = await strapi.db.query(contentType).findOne({
+          where: {
+            [nameField]: {
+              $containsi: name.trim(),
+            },
+          },
+        });
+
+        if (entity) {
+          logger.info(`✅ Found ${entityType} with case-insensitive search`, {
+            ...context,
+            entityId: entity.id,
+            documentId: entity.documentId,
+            foundLocale: entity.locale || 'null',
+            foundValue: entity[nameField],
+          });
+          return entity.documentId || entity.id;
+        }
+      } catch (searchError) {
+        logger.debug(`Case-insensitive search failed: ${searchError.message}`, context);
+      }
+
+      // List available templates for debugging
+      try {
+        const availableTemplates = await strapi.db.query(contentType).findMany({
+          limit: 10,
+          select: [nameField, 'locale', 'id', 'documentId'],
+        });
+
+        logger.debug(`📋 Available templates (first 10):`, {
+          ...context,
+          availableCount: availableTemplates.length,
+          templates: availableTemplates.map((t) => ({
+            id: t.id,
+            documentId: t.documentId,
+            [nameField]: t[nameField],
+            locale: t.locale || 'null',
+          })),
+        });
+      } catch (debugError) {
+        logger.debug(`Error listing templates for debug: ${debugError.message}`, context);
+      }
+    }
+
+    if (ignoreMissingRelations) {
+      logger.debug(`⚠️ ${entityType} not found, ignoring due to settings`, context);
+      return null;
+    } else {
+      logger.error(`❌ ${entityType} not found after enhanced search`, context);
+      throw new Error(`${entityType} with ${nameField}='${name}' not found in ${contentType}`);
+    }
   }
 
   private async findEntityByName(
@@ -2178,85 +2623,88 @@ export class ImportProcessor {
     try {
       let entity = null;
 
-      // Strategy 1: Exact match with specified locale
-      if (locale && locale !== 'default') {
-        try {
-          entity = await strapi.db.query(contentType).findOne({
-            where: {
-              [nameField]: normalizedName,
-              locale,
-            },
-          });
-          if (entity) {
-            logger.debug(`✅ Found by exact match with locale ${locale}`, {
-              ...context,
-              entityId: entity.id,
-            });
-            return entity.documentId || entity.id;
-          }
-        } catch (error) {
-          logger.debug(`Error in exact match with locale: ${error.message}`, context);
-        }
-      }
+      // Strategy 1: Check if model has i18n/localization
+      const targetModel = getModel(contentType);
+      const isLocalized =
+        targetModel?.pluginOptions?.i18n &&
+        (targetModel.pluginOptions.i18n as any)?.localized === true;
 
-      // Strategy 2: Exact match without locale constraint
-      try {
-        entity = await strapi.db.query(contentType).findOne({
-          where: {
+      logger.debug(`🌐 Content type localization info`, {
+        ...context,
+        isLocalized,
+        hasI18nPlugin: !!targetModel?.pluginOptions?.i18n,
+        draftAndPublish: targetModel?.options?.draftAndPublish,
+      });
+
+      // Strategy 2: Enhanced search with proper locale handling
+      const searchLocales = isLocalized
+        ? ['ru', 'en', 'kk', 'default', locale].filter(Boolean)
+        : [null]; // Non-localized content
+
+      for (const searchLocale of searchLocales) {
+        try {
+          // Build search criteria
+          const searchWhere: any = {
             [nameField]: normalizedName,
-          },
-        });
-        if (entity) {
-          logger.debug(`✅ Found by exact match without locale`, {
+          };
+
+          // Only add locale filter for localized content
+          if (isLocalized && searchLocale && searchLocale !== 'default') {
+            searchWhere.locale = searchLocale;
+          } else if (isLocalized && searchLocale === 'default') {
+            // For 'default' locale, try both null and 'en' as fallback
+            searchWhere.locale = ['en', null];
+          }
+
+          logger.debug(`🎯 Searching with criteria`, {
             ...context,
-            entityId: entity.id,
-            foundLocale: entity.locale || 'default',
+            searchLocale,
+            searchWhere: JSON.stringify(searchWhere),
           });
-          return entity.documentId || entity.id;
-        }
-      } catch (error) {
-        logger.debug(`Error in exact match without locale: ${error.message}`, context);
-      }
 
-      // Strategy 3: Try common locales (ru, kk, en, default)
-      const commonLocales = ['ru', 'kk', 'en', 'default'];
-      for (const testLocale of commonLocales) {
-        if (testLocale === locale) continue; // Already tried above
-
-        try {
           entity = await strapi.db.query(contentType).findOne({
-            where: {
-              [nameField]: normalizedName,
-              locale: testLocale === 'default' ? null : testLocale,
-            },
+            where: searchWhere,
           });
+
           if (entity) {
-            logger.debug(`✅ Found by exact match with locale ${testLocale}`, {
+            logger.debug(`✅ Found entity with locale ${searchLocale}`, {
               ...context,
               entityId: entity.id,
-              foundLocale: testLocale,
+              documentId: entity.documentId,
+              foundLocale: entity.locale || 'null',
+              foundValue: entity[nameField],
             });
             return entity.documentId || entity.id;
           }
         } catch (error) {
-          logger.debug(`Error searching with locale ${testLocale}: ${error.message}`, context);
+          logger.debug(`Error searching with locale ${searchLocale}: ${error.message}`, context);
         }
       }
 
-      // Strategy 4: Fuzzy search - try case-insensitive search
+      // Strategy 3: Case-insensitive search across all locales
       try {
-        entity = await strapi.db.query(contentType).findOne({
-          where: {
-            [nameField]: {
-              $containsi: normalizedName,
-            },
+        const fuzzyWhere: any = {
+          [nameField]: {
+            $containsi: normalizedName,
           },
+        };
+
+        logger.debug(`🔍 Fuzzy search with case-insensitive matching`, {
+          ...context,
+          fuzzyWhere: JSON.stringify(fuzzyWhere),
         });
+
+        entity = await strapi.db.query(contentType).findOne({
+          where: fuzzyWhere,
+        });
+
         if (entity) {
           logger.debug(`✅ Found by fuzzy search (case-insensitive)`, {
             ...context,
             entityId: entity.id,
+            documentId: entity.documentId,
             foundValue: entity[nameField],
+            foundLocale: entity.locale || 'null',
           });
           return entity.documentId || entity.id;
         }
@@ -2264,7 +2712,76 @@ export class ImportProcessor {
         logger.debug(`Error in fuzzy search: ${error.message}`, context);
       }
 
-      // Strategy 5: For templates, also try searching by slug
+      // Strategy 4: Special handling for countries with name variations
+      if (contentType === 'api::country.country') {
+        const countryNameVariations = this.getCountryNameVariations(normalizedName);
+
+        logger.debug(`🌍 Trying country name variations`, {
+          ...context,
+          originalName: normalizedName,
+          variations: countryNameVariations,
+        });
+
+        for (const variation of countryNameVariations) {
+          try {
+            for (const searchLocale of searchLocales) {
+              const variationWhere: any = {
+                [nameField]: variation,
+              };
+
+              if (isLocalized && searchLocale && searchLocale !== 'default') {
+                variationWhere.locale = searchLocale;
+              }
+
+              entity = await strapi.db.query(contentType).findOne({
+                where: variationWhere,
+              });
+
+              if (entity) {
+                logger.debug(`✅ Found country by name variation`, {
+                  ...context,
+                  entityId: entity.id,
+                  documentId: entity.documentId,
+                  originalName: normalizedName,
+                  foundVariation: variation,
+                  foundLocale: entity.locale || 'null',
+                });
+                return entity.documentId || entity.id;
+              }
+            }
+          } catch (error) {
+            logger.debug(
+              `Error searching country variation ${variation}: ${error.message}`,
+              context
+            );
+          }
+        }
+      }
+
+      // Strategy 5: Debug - List available entities to understand what's in the database
+      try {
+        logger.debug(`🔍 Listing available entities for debugging`, context);
+
+        const availableEntities = await strapi.db.query(contentType).findMany({
+          limit: 10,
+          select: [nameField, 'locale', 'id', 'documentId'],
+        });
+
+        logger.debug(`📋 Available entities sample (first 10):`, {
+          ...context,
+          availableCount: availableEntities.length,
+          entities: availableEntities.map((e) => ({
+            id: e.id,
+            documentId: e.documentId,
+            [nameField]: e[nameField],
+            locale: e.locale || 'null',
+          })),
+        });
+      } catch (debugError) {
+        logger.debug(`Error listing entities for debug: ${debugError.message}`, context);
+      }
+
+      // Strategy 6: For templates, also try searching by slug
       if (contentType === 'api::template.template' && nameField === 'name') {
         try {
           const slug = normalizedName
@@ -2290,10 +2807,24 @@ export class ImportProcessor {
         }
       }
 
-      // Entity not found
+      // Entity not found - prepare detailed error information
+      const searchDetails = {
+        searchedName: normalizedName,
+        searchField: nameField,
+        contentType: contentType,
+        isLocalized: isLocalized,
+        searchedLocales: isLocalized ? searchLocales.filter((l) => l !== null) : ['non-localized'],
+        triedVariations:
+          contentType === 'api::country.country'
+            ? this.getCountryNameVariations(normalizedName)
+            : [normalizedName],
+        hasI18nPlugin: !!targetModel?.pluginOptions?.i18n,
+        draftAndPublish: targetModel?.options?.draftAndPublish,
+      };
+
       logger.warn(
         `❌ Related entity with ${nameField}='${normalizedName.substring(0, 30)}...' not found in ${contentType} (checked both published and draft)`,
-        context
+        { ...context, searchDetails }
       );
 
       if (ignoreMissingRelations) {
@@ -2307,9 +2838,16 @@ export class ImportProcessor {
           `🚫 Throwing error for missing ${entityType} because ignoreMissingRelations=false`,
           context
         );
-        throw new Error(
+
+        // Create enhanced error with detailed information
+        const enhancedError = new Error(
           `Related entity with ${nameField}='${normalizedName.substring(0, 50)}${normalizedName.length > 50 ? '...' : ''}' not found in ${contentType} (checked both published and draft)`
         );
+
+        // Add search details to error for better debugging
+        (enhancedError as any).searchDetails = searchDetails;
+
+        throw enhancedError;
       }
     } catch (error) {
       logger.error(`Error finding ${entityType} by name`, {
@@ -2323,6 +2861,47 @@ export class ImportProcessor {
         throw error;
       }
     }
+  }
+
+  /**
+   * Get country name variations for better matching
+   */
+  private getCountryNameVariations(countryName: string): string[] {
+    const variations: string[] = [countryName];
+
+    // Common country name mappings
+    const countryMappings: Record<string, string[]> = {
+      China: ['Китай', 'China', "People's Republic of China"],
+      Китай: ['China', 'Китай', "People's Republic of China"],
+      Russia: ['Россия', 'Russian Federation', 'Russia'],
+      'Russian Federation': ['Россия', 'Russia', 'Russian Federation'],
+      Россия: ['Russia', 'Russian Federation', 'Россия'],
+      USA: ['United States', 'United States of America', 'США', 'USA'],
+      'United States': ['USA', 'United States of America', 'США', 'United States'],
+      'United States of America': ['USA', 'United States', 'США', 'United States of America'],
+      США: ['USA', 'United States', 'United States of America', 'США'],
+      Germany: ['Германия', 'Germany', 'Deutschland'],
+      Германия: ['Germany', 'Германия', 'Deutschland'],
+      Kazakhstan: ['Казахстан', 'Kazakhstan'],
+      Казахстан: ['Kazakhstan', 'Казахстан'],
+      'United Kingdom': ['UK', 'Great Britain', 'Britain', 'Великобритания', 'United Kingdom'],
+      UK: ['United Kingdom', 'Great Britain', 'Britain', 'Великобритания', 'UK'],
+      'North Korea': ['DPRK', "Democratic People's Republic of Korea", 'Северная Корея'],
+      'South Korea': ['Korea', 'Republic of Korea', 'Южная Корея'],
+      'Iran, Islamic Republic of': ['Iran', 'Иран'],
+      Iran: ['Iran, Islamic Republic of', 'Иран'],
+      "Lao People's Democratic Republic": ['Laos', 'Лаос'],
+      'Palestinian Territory, Occupied': ['Palestine', 'Палестина'],
+    };
+
+    // Add variations from mapping
+    const mappedVariations = countryMappings[countryName];
+    if (mappedVariations) {
+      variations.push(...mappedVariations);
+    }
+
+    // Remove duplicates and return
+    return [...new Set(variations)];
   }
 
   private detectDuplicatesInImportData(importData: Record<string, EntryVersion[]>): void {
@@ -2399,6 +2978,53 @@ export class ImportProcessor {
     return key;
   }
 
+  /**
+   * Build detailed path for error tracking
+   */
+  private buildDetailedPath(
+    contentType: string,
+    status: 'draft' | 'published',
+    locale: string,
+    additionalPath: string = ''
+  ): string {
+    const basePath = `${contentType}.${status}.${locale}`;
+    return additionalPath ? `${basePath}.${additionalPath}` : basePath;
+  }
+
+  /**
+   * Add enhanced failure with detailed path information
+   */
+  private addEnhancedFailure(
+    error: Error,
+    entry: any,
+    contentType: string,
+    status: 'draft' | 'published',
+    locale: string,
+    fieldPath: string = '',
+    additionalDetails: any = {}
+  ): void {
+    const fullPath = this.buildDetailedPath(contentType, status, locale, fieldPath);
+
+    const enhancedDetails = {
+      ...additionalDetails,
+      contentType,
+      status,
+      locale,
+      fieldPath,
+      searchDetails: (error as any).searchDetails,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.context.addFailure(
+      error.message,
+      {
+        entry,
+        path: fullPath,
+      },
+      enhancedDetails
+    );
+  }
+
   private async createMissingRelationEntity(
     contentType: string,
     name: string,
@@ -2417,24 +3043,42 @@ export class ImportProcessor {
     let entityData: any = {};
 
     try {
+      // Get the target model to understand its structure
+      const targetModel = getModel(contentType);
+      if (!targetModel) {
+        logger.error(`❌ Model not found for content type: ${contentType}`, context);
+        return null;
+      }
+
+      // Generate basic slug for entities that need it
+      const slug = name
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^\w\-]+/g, '');
+
+      // Determine the main field name based on content type
+      const mainField = this.getSearchFieldForContentType(contentType);
+
+      // Start with basic entity data
+      entityData = {
+        [mainField]: name,
+        locale: entityLocale,
+      };
+
+      // Add publishedAt only if the model supports draft/publish
+      if (targetModel.options?.draftAndPublish !== false) {
+        entityData.publishedAt = new Date();
+      }
+
+      // Add specific fields based on content type
       switch (contentType) {
         case 'api::faq.faq':
-          entityData = {
-            title: name,
-            richText: `${name}`,
-            publishedAt: new Date(),
-            locale: entityLocale,
-          };
+          entityData.richText = `Auto-generated FAQ: ${name}`;
           break;
 
         case 'api::faq-category.faq-category':
-          entityData = {
-            title: name,
-            richText: `${name}`,
-            iconName: 'QuestionMarkIcon',
-            publishedAt: new Date(),
-            locale: entityLocale,
-          };
+          entityData.richText = `Auto-generated FAQ Category: ${name}`;
+          entityData.iconName = 'QuestionMarkIcon';
           break;
 
         case 'api::country.country':
@@ -2446,64 +3090,96 @@ export class ImportProcessor {
             .toUpperCase();
           const code = baseCode || `CTR${timestamp}`;
 
-          entityData = {
-            name: name,
-            code: code,
-            publishedAt: new Date(),
-            locale: entityLocale,
-          };
+          // Ensure code is unique
+          let finalCode = code;
+          let codeAttempts = 0;
+          while (codeAttempts < 10) {
+            try {
+              const existingWithCode = await strapi.db.query('api::country.country').findOne({
+                where: { code: finalCode },
+              });
+              if (!existingWithCode) {
+                break; // Code is unique
+              }
+              codeAttempts++;
+              finalCode = `${code}${codeAttempts}`;
+            } catch (error) {
+              logger.debug(`Error checking code uniqueness: ${error.message}`, context);
+              break; // Use the current code
+            }
+          }
+
+          entityData.code = finalCode;
+          // Countries don't use publishedAt (draftAndPublish: false)
+          delete entityData.publishedAt;
           break;
 
         case 'api::template.template':
-          entityData = {
-            name: name,
-            slug: name
-              .toLowerCase()
-              .replace(/\s+/g, '-')
-              .replace(/[^\w\-]+/g, ''),
-            dynamicZone: [],
-            publishedAt: new Date(),
-            locale: entityLocale,
-          };
+          entityData.slug = slug;
+          entityData.dynamicZone = [];
           break;
 
         case 'api::modal.modal':
-          entityData = {
-            title: name,
-            slug: name
-              .toLowerCase()
-              .replace(/\s+/g, '-')
-              .replace(/[^\w\-]+/g, ''),
-            showHeader: true,
-            isTitleCenter: false,
-            dynamicZone: [
-              {
-                __component: 'dynamic-components.markdown',
-                text: `${name}`,
-              },
-            ],
-            publishedAt: new Date(),
-            locale: entityLocale,
-          };
+          entityData.slug = slug;
+          entityData.showHeader = true;
+          entityData.isTitleCenter = false;
+          entityData.dynamicZone = [
+            {
+              __component: 'dynamic-components.markdown',
+              text: `Auto-generated modal: ${name}`,
+            },
+          ];
           break;
 
         case 'api::card.card':
-          entityData = {
-            title: name,
-            slug: name
-              .toLowerCase()
-              .replace(/\s+/g, '-')
-              .replace(/[^\w\-]+/g, ''),
-            content: `Auto-generated card: ${name}`,
-            publishedAt: new Date(),
-            locale: entityLocale,
-          };
+          entityData.slug = slug;
+          entityData.content = `Auto-generated card: ${name}`;
+          break;
+
+        case 'api::category.category':
+          // Check if the model has slug field
+          if (targetModel.attributes.slug) {
+            entityData.slug = slug;
+          }
+          // Check if the model has description field
+          if (targetModel.attributes.description) {
+            entityData.description = `Auto-generated category: ${name}`;
+          }
+          break;
+
+        case 'api::tag.tag':
+          if (targetModel.attributes.slug) {
+            entityData.slug = slug;
+          }
+          if (targetModel.attributes.description) {
+            entityData.description = `Auto-generated tag: ${name}`;
+          }
           break;
 
         default:
-          logger.warn(`Unknown content type for entity creation: ${contentType}`, context);
-          return null;
+          // Generic handling for unknown content types
+          logger.info(`🔧 Using generic entity creation for ${contentType}`, context);
+
+          // Add common optional fields if they exist in the model
+          if (targetModel.attributes.slug) {
+            entityData.slug = slug;
+          }
+          if (targetModel.attributes.description) {
+            entityData.description = `Auto-generated: ${name}`;
+          }
+          if (targetModel.attributes.content) {
+            entityData.content = `Auto-generated content: ${name}`;
+          }
+          if (targetModel.attributes.richText) {
+            entityData.richText = `Auto-generated: ${name}`;
+          }
+          break;
       }
+
+      logger.debug(`📋 Creating entity with data:`, {
+        ...context,
+        entityData: JSON.stringify(entityData, null, 2),
+      });
 
       const newEntity = await strapi.db.query(contentType).create({
         data: entityData,
@@ -2514,6 +3190,8 @@ export class ImportProcessor {
           ...context,
           entityId: newEntity.id,
           documentId: newEntity.documentId || newEntity.id,
+          mainField,
+          mainValue: entityData[mainField],
         });
 
         // Cache the created entity
@@ -2529,8 +3207,68 @@ export class ImportProcessor {
       logger.error(`❌ Error creating missing relation entity`, {
         ...context,
         error: error.message,
+        errorDetails: error.details || 'No details available',
+        errorStack: error.stack,
       });
       return null;
     }
+  }
+
+  private async findInDatabase(
+    idValue: any,
+    targetModel: Schema.Schema,
+    targetIdField: string
+  ): Promise<{ documentId: string } | null> {
+    const context = {
+      operation: 'import',
+      contentType: targetModel.uid,
+      idField: targetIdField,
+      idValue,
+    };
+
+    logger.debug('Looking up record in database', context);
+
+    // Check both published and draft versions
+    const publishedVersion = await this.services
+      .documents(targetModel.uid as UID.ContentType)
+      .findFirst({
+        filters: { [targetIdField]: idValue },
+        status: 'published',
+      });
+
+    const draftVersion = await this.services
+      .documents(targetModel.uid as UID.ContentType)
+      .findFirst({
+        filters: { [targetIdField]: idValue },
+        status: 'draft',
+      });
+
+    if (publishedVersion && draftVersion) {
+      if (publishedVersion.documentId === draftVersion.documentId) {
+        logger.debug('Found matching published and draft versions', {
+          ...context,
+          documentId: publishedVersion.documentId,
+        });
+        return publishedVersion;
+      }
+      logger.warn('Found conflicting published and draft versions', {
+        ...context,
+        publishedId: publishedVersion.documentId,
+        draftId: draftVersion.documentId,
+      });
+      return publishedVersion;
+    }
+
+    if (publishedVersion || draftVersion) {
+      logger.debug('Found single version', {
+        ...context,
+        status: publishedVersion ? 'published' : 'draft',
+        documentId: (publishedVersion || draftVersion).documentId,
+      });
+    } else {
+      logger.debug('Record not found in database', context);
+    }
+
+    return publishedVersion || draftVersion;
   }
 }
