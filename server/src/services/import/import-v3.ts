@@ -75,6 +75,8 @@ async function importDataV3(
     slug,
   };
 
+  console.log('========importDataV3-3=============', context);
+
   const { useSSE = false } = progressOptions || {};
 
   // validate file content
